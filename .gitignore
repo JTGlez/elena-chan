@@ -1,0 +1,7 @@
+# Third-party firmware clones for study (not tracked)
+/vendor/
+
+# Flash dumps and snapshots: contain Wi-Fi passwords and tokens
+/.claude/skills/stackchan-flash/backups/
+
+__pycache__/
