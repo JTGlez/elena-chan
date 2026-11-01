@@ -5,3 +5,9 @@
 /.claude/skills/stackchan-flash/backups/
 
 __pycache__/
+
+# Local model workers: images, configs, API keys and model weights (not tracked)
+/.localworker/
+
+# Local audio lab: builds, Docker image archives and model weights (not tracked)
+/.localaudio/

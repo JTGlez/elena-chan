@@ -1,0 +1,8 @@
+[submodule "firmware"]
+	path = firmware
+	url = ../xiaozhi-esp32.git
+	branch = elena
+[submodule "server"]
+	path = server
+	url = ../xiaozhi-esp32-server.git
+	branch = elena
