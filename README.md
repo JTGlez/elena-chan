@@ -2,6 +2,8 @@
 
 <img src="assets/elena-readme.png" alt="Elena-chan" width="300">
 
+<sub>Character art generated with AI (ChatGPT).</sub>
+
 # Elena-chan
 
 **Custom Stack-chan firmware and server for local AI.**
