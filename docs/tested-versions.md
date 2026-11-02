@@ -5,7 +5,7 @@ Tested on 2026-11-02 under WSL2 with Ubuntu 26.04.
 | Component | Version |
 |---|---|
 | ESP-IDF | v6.1 (`fff9895`), `xtensa-esp-elf` esp-15.2.0_20251204, Python 3.12 |
-| Xiaozhi firmware | `4632dc5` plus our branch `feature/elena-avatar` at `fe366d4` and `dependencies.lock`, board and variant `elena-stackchan` |
+| Xiaozhi firmware | `4632dc5` plus our branch `feature/elena-pc-recording` at `743f631` and `dependencies.lock`, board and variant `elena-stackchan` |
 | `xiaozhi-esp32-server` | `4745186` plus `requirements-dev.txt` and `requirements.lock`, Python 3.10 |
 | Hermes | Not integrated yet |
 
@@ -19,6 +19,8 @@ Tested on 2026-11-02 under WSL2 with Ubuntu 26.04.
 | `make server-run` with `config/server.local.yaml.template` | Starts and initializes LLM, VAD, and STT providers |
 
 ## On the robot
+
+Board `elena-stackchan` with `SCREEN_STREAM=1`, from the sources of `743f631` before they were committed, except for example addresses in a host test — `dist/firmware/20261102-134814-pc-recording-lease-fix-fe366d4-dirty`. Measured in `docs/screen-stream.md`. The same sources built with `AVATAR=emoji` have not run on the robot.
 
 Board `elena-stackchan` at `fe366d4` — `dist/firmware/20261102-041708-elena-stronger-reds-fe366d4`, written through the `stackchan-flash` skill with its pre-write snapshot kept — using `server/` with MiniMax for STT, LLM, and TTS: it booted, connected, and recognized Spanish speech, and the user judged the avatar on the screen. Details and what was not checked are in [avatar-validation.md](avatar-validation.md).
 

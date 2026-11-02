@@ -59,6 +59,11 @@ Hermes has no fork. Install it separately and record the tested version in `docs
 
 - A successful build does not validate hardware. Report what was tested on the robot and what was not.
 
+### Commits
+
+- Write every commit in this repository and in both submodules as a [Conventional Commit](https://www.conventionalcommits.org/): `<type>(<optional scope>): <summary>`, such as `feat(elena): stream the screen to a PC viewer`.
+- Keep the imperative summary and use the body to explain why. A commit that changes behavior also says what was tested on the robot.
+
 ## Development environment
 
 ```sh
@@ -67,7 +72,8 @@ make setup          # Submodules, server environment, ESP-IDF v6.1
 make test           # All test suites
 make check-locks    # Fails if pinned versions drifted; run after a firmware build
 make firmware       # Builds for CoreS3; never writes to the robot
-make firmware-image PURPOSE="..."  # Stores an image in dist/firmware/
+make firmware-image PURPOSE="..."  # Stores an image in dist/firmware/; optional SCREEN_STREAM=1, AVATAR=emoji
+make screen-viewer ROBOT=<address> # Watches and records the screen of a SCREEN_STREAM=1 image
 make server-config  # Generates data/.config.yaml for local services; PROFILE=minimax uses MiniMax
 make server-run     # Starts the server
 ```
@@ -140,7 +146,7 @@ Never publish a pointer to a commit that is missing from its fork. `push.recurse
 - **Add before editing.** Prefer new files and a few registration lines in upstream files.
 - **Firmware:** put our hardware in its own `main/boards/` folder and do not alter existing boards. Keep `main/application.cc` changes to minimal hooks.
 - **Server:** select STT, LLM, and TTS through configuration when possible. Build an image from the fork; do not copy files into a running container.
-- **Commits:** keep them small and explain why. After `git fetch upstream`, `git diff upstream/main...elena` must read as the full list of our changes. Use three dots.
+- **Commits:** keep them small and explain why, in the format of [Commits](#commits). After `git fetch upstream`, `git diff upstream/main...elena` must read as the full list of our changes. Use three dots.
 
 ### Update dependencies
 
