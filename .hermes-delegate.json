@@ -14,16 +14,20 @@
         "reason": "every write to the robot goes through stackchan-flash and the user"
       },
       {
-        "pattern": "^(python[0-9.]*|bash|sh) .*stackchan[-_]flash",
-        "reason": "stackchan-flash runs only with the user's confirmation"
-      },
-      {
         "pattern": "^docker .*\\b(stop|kill|rm|restart|down)\\b",
         "reason": "other GPU services are not the agent's to stop"
       },
       {
         "pattern": "^python[0-9.]* .*model_gate.*\\b(stop|use)\\b",
         "reason": "the model gate is not the agent's to change"
+      },
+      {
+        "pattern": "stackchan_flash\\.py\\b.*(?:^|\\s)--allow-nvs-overwrite",
+        "reason": "accepting an NVS overwrite is the user's decision"
+      },
+      {
+        "pattern": "stackchan_flash\\.py\\b.*\\b(erase-flash|erase_flash|--erase-all|efuse)\\b",
+        "reason": "erasing flash or writing eFuses is never allowed"
       }
     ],
     "blocked_code": [
@@ -34,6 +38,14 @@
       {
         "pattern": "\\bidf\\.py\\b.*\\b(flash|erase[-_]flash)\\b",
         "reason": "every write to the robot goes through stackchan-flash and the user"
+      },
+      {
+        "pattern": "stackchan_flash\\.py\\b.*(?:^|\\s)--allow-nvs-overwrite",
+        "reason": "accepting an NVS overwrite is the user's decision"
+      },
+      {
+        "pattern": "stackchan_flash\\.py\\b.*\\b(erase-flash|erase_flash|--erase-all|efuse)\\b",
+        "reason": "erasing flash or writing eFuses is never allowed"
       }
     ],
     "secret_paths": [

@@ -52,7 +52,7 @@ Hermes has no fork. Install it separately and record the tested version in `docs
 ### Flashing the robot
 
 - Use only the `stackchan-flash` skill. Do not use `idf.py flash` or esptool directly.
-- Every write to the robot needs explicit user confirmation.
+- Every write to the robot needs explicit user confirmation, for that specific write. The guard lets an agent run the skill, and blocks `--allow-nvs-overwrite`, flash erasure and eFuse writes.
 - Build images with the `stackchan-build` skill. They live in `dist/firmware/<date>-<time>-<purpose>-<commit>/`.
 
 ### Validation
