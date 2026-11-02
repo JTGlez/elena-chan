@@ -103,8 +103,11 @@ Details of a machine stay out of tracked files: each skill reads them from an un
 
 ### Fork branches
 
+Firmware and server code lives only in the forks. This repository records which commit of each fork it uses.
+
 - `main` mirrors upstream and never carries our commits.
-- `elena` starts at the pinned base and holds all our changes.
+- `elena` starts at the pinned base and holds all our finished changes.
+- `feature/<name>` holds larger work in progress and merges into `elena` when ready.
 
 Each `elena-chan` commit records an exact combination of firmware and server.
 
@@ -126,11 +129,11 @@ git -C server sparse-checkout set main/xiaozhi-server
 
 ### Make a change
 
-1. Work inside the submodule on `elena`. `git submodule update` leaves a detached HEAD, so run `git switch elena` before committing.
+1. Work inside the submodule on `elena` or a `feature/<name>` branch. `git submodule update` leaves a detached HEAD, so switch to the branch before committing.
 2. Commit and push to the fork.
 3. In the root, commit the updated pointer together with anything that depends on it.
 
-Never publish a pointer to a commit that is missing from its fork. `push.recurseSubmodules on-demand` prevents this.
+Never publish a pointer to a commit that is missing from its fork. `push.recurseSubmodules on-demand` prevents this, but it can also publish the submodule's whole branch of the same name, and both forks are public. Follow the order above so a root push publishes nothing extra.
 
 ### Keep changes easy to merge
 
@@ -186,6 +189,7 @@ Each graph covers one codebase.
 | Xiaozhi v2.2.4 | `vendor/firmwares/xiaozhi-esp32-v2.2.4/graphify-out/graph.json` | Official firmware's base, with its patch applied |
 | Nous-Girl | `vendor/firmwares/nous-girl-stackchan/graphify-out/graph.json` | Server, Hermes add-ons, docs, and wake words; its firmware is unpublished |
 | `xiaozhi-esp32-server` `4745186` | `vendor/servers/xiaozhi-esp32-server/graphify-out/graph.json` | Unmodified `main/xiaozhi-server` code, without its docs |
+| ESP-IDF v6.1 | `vendor/sdk/esp-idf-v6.1/graphify-out/graph.json` | Code of the components in the `elena-stackchan` build, ESP32-S3 only, without submodules, tests, docs, examples, or register structs; scope in its `.graphifyignore` |
 
 ### Connected graphs
 
