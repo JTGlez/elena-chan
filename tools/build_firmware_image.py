@@ -23,8 +23,7 @@ ENV_FILE = ROOT / "config" / "firmware.local.env"
 BOARD = "elena-stackchan"
 VARIANT = "elena-stackchan"
 SCREEN_STREAM_OPTION = "CONFIG_ELENA_SCREEN_STREAM"
-AVATAR_ELENA_OPTION = "CONFIG_ELENA_AVATAR_ELENA"
-AVATAR_EMOJI_OPTION = "CONFIG_ELENA_AVATAR_EMOJI"
+DEFAULT_AVATAR = "elena"
 
 
 def slugify(text: str) -> str:
@@ -130,25 +129,34 @@ def enable_kconfig(sdkconfig: Path, option: str) -> None:
     sdkconfig.write_text(text.replace(unset, f"{option}=y"), encoding="utf-8")
 
 
-def select_avatar(sdkconfig: Path, avatar: str) -> None:
-    """Choose the avatar in a built configuration. Elena is the default."""
-    if avatar == "elena":
-        return
-    text = sdkconfig.read_text(encoding="utf-8")
-    default_on = f"{AVATAR_ELENA_OPTION}=y"
-    chosen_off = f"# {AVATAR_EMOJI_OPTION} is not set"
-    lines = text.splitlines()
-    if default_on not in lines or chosen_off not in lines:
-        raise SystemExit("This build has no avatar choice.")
-    text = text.replace(default_on, f"# {AVATAR_ELENA_OPTION} is not set")
-    sdkconfig.write_text(text.replace(chosen_off, f"{AVATAR_EMOJI_OPTION}=y"), encoding="utf-8")
+def avatar_dir(name: str) -> Path:
+    """The folder of a named avatar. Refuses a name that could leave the avatars folder."""
+    if not re.fullmatch(r"[a-z0-9][a-z0-9_-]*", name):
+        raise SystemExit(f"Invalid avatar name: {name!r}.")
+    directory = FIRMWARE / "main" / "boards" / BOARD / "avatars" / name
+    if not (directory / "avatar.json").is_file():
+        raise SystemExit(f"Avatar {name!r} not found: no avatar.json in {directory}.")
+    return directory
 
 
-def check_avatar_assets(assets: Path, avatar: str) -> None:
-    """Fail if the assets belong to the other avatar, as stale ones would."""
+def set_avatar(sdkconfig: Path, name: str) -> None:
+    text, count = re.subn(
+        r'^CONFIG_ELENA_AVATAR=".*"$',
+        lambda _: f'CONFIG_ELENA_AVATAR="{name}"',
+        sdkconfig.read_text(encoding="utf-8"),
+        flags=re.MULTILINE,
+    )
+    if count != 1:
+        raise SystemExit(f"Expected one CONFIG_ELENA_AVATAR in {sdkconfig}, found {count}.")
+    sdkconfig.write_text(text, encoding="utf-8")
+
+
+def check_avatar_assets(assets: Path, directory: Path) -> None:
+    """Fail if the assets belong to another avatar, as stale ones would."""
+    renderer = json.loads((directory / "avatar.json").read_text(encoding="utf-8"))["renderer"]
     has_gifs = b"GIF89a" in assets.read_bytes()
-    if has_gifs != (avatar == "elena"):
-        raise SystemExit(f"{assets} does not match the {avatar} avatar.")
+    if (renderer == "gif" and not has_gifs) or (renderer == "image" and has_gifs):
+        raise SystemExit(f"{assets} does not match the {directory.name} avatar.")
 
 
 def resolve_selection(board: str, variant: str) -> str:
@@ -173,11 +181,15 @@ def main() -> int:
     parser.add_argument("--variant", default=VARIANT, help="Board variant name")
     parser.add_argument("--screen-stream", action="store_true",
                         help="Include the screen stream for tools/screen_viewer.py")
-    parser.add_argument("--avatar", choices=("elena", "emoji"),
-                        help="Avatar of the elena-stackchan board; the default is elena")
+    parser.add_argument("--avatar",
+                        help="Folder of avatars/ on the elena-stackchan board; the default is elena")
     args = parser.parse_args()
     try:
         board_symbol = resolve_selection(args.board, args.variant)
+        if args.avatar is not None and args.board != BOARD:
+            raise ValueError(f"--avatar applies only to the {BOARD} board")
+        avatar = (args.avatar if args.avatar is not None else DEFAULT_AVATAR) if args.board == BOARD else None
+        directory = avatar_dir(avatar) if avatar else None
     except ValueError as error:
         parser.error(str(error))
 
@@ -199,20 +211,19 @@ def main() -> int:
         set_ota_url(sdkconfig, url)
     if args.screen_stream:
         enable_kconfig(sdkconfig, SCREEN_STREAM_OPTION)
-    avatar = args.avatar or ("elena" if args.board == BOARD else None)
-    if avatar:
-        select_avatar(sdkconfig, avatar)
-    if avatar == "emoji":
+    other_avatar = avatar is not None and avatar != DEFAULT_AVATAR
+    if other_avatar:
+        set_avatar(sdkconfig, avatar)
         # A changed list of arguments does not rebuild the assets by itself.
         (FIRMWARE / "build" / "generated_assets.bin").unlink(missing_ok=True)
-    if url or args.screen_stream or avatar == "emoji":
+    if url or args.screen_stream or other_avatar:
         run("idf.py", "build")
     build = FIRMWARE / "build"
     if url and url.encode() not in (build / "xiaozhi.bin").read_bytes():
         raise SystemExit("The built app does not contain OTA_URL.")
     check_language(flash_app(build), args.language)
-    if avatar:
-        check_avatar_assets(build / "generated_assets.bin", avatar)
+    if directory:
+        check_avatar_assets(build / "generated_assets.bin", directory)
     match = re.search(r'^CONFIG_OTA_URL="(.*)"$', sdkconfig.read_text(encoding="utf-8"), re.MULTILINE)
 
     if source_fingerprint(FIRMWARE) != source_sha256:

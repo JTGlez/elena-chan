@@ -23,7 +23,7 @@ OTA packages must match `elena-stackchan`; see `docs/avatar-validation.md`.
 
 To watch the screen from the PC, add `SCREEN_STREAM=1`; see `docs/screen-stream.md`. Images without it do not contain that code.
 
-To use Xiaozhi's simple emoji face instead of Elena's avatar, add `AVATAR=emoji`. It combines with the other options, and `manifest.json` records both.
+`AVATAR=<name>` selects a folder of `firmware/main/boards/elena-stackchan/avatars/`; the default is `elena`, and `emoji` is the simple face. It combines with the other options, and `manifest.json` records both. A name with no folder stops the command before it builds.
 
 To use the Xiaozhi cloud server instead of a local one, add `XIAOZHI_CLOUD=1`. Only do this when the user asks, because voice then leaves this machine. The firmware language defaults to `es-ES`; change it with `LANGUAGE=en-US`.
 

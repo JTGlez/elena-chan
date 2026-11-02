@@ -69,7 +69,7 @@ update-server-lock: ## Refresh the server's lock after editing its requirements
 firmware: ## Build the firmware for the configured board
 	$(IDF_ENV) && cd firmware && python scripts/build.py $(BOARD) --name $(BOARD_VARIANT) --language $(LANGUAGE)
 
-firmware-image: ## Build an image in dist/firmware; set PURPOSE, optional LANGUAGE, XIAOZHI_CLOUD=1, SCREEN_STREAM=1, AVATAR=emoji
+firmware-image: ## Build an image in dist/firmware; set PURPOSE, optional LANGUAGE, XIAOZHI_CLOUD=1, SCREEN_STREAM=1, AVATAR=<folder>
 	$(IDF_ENV) && python $(CURDIR)/tools/build_firmware_image.py --purpose "$(PURPOSE)" \
 		--language "$(LANGUAGE)" --board "$(BOARD)" --variant "$(BOARD_VARIANT)" $(if $(XIAOZHI_CLOUD),--xiaozhi-cloud) $(if $(SCREEN_STREAM),--screen-stream) $(if $(AVATAR),--avatar "$(AVATAR)")
 

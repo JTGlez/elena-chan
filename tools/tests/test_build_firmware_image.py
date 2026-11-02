@@ -8,8 +8,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from build_firmware_image import (  # noqa: E402
-    check_avatar_assets, enable_kconfig, image_name, read_ota_url, select_avatar, set_ota_url,
-    slugify, store_image,
+    avatar_dir, check_avatar_assets, enable_kconfig, image_name, read_ota_url, set_avatar,
+    set_ota_url, slugify, store_image,
 )
 
 
@@ -33,48 +33,90 @@ class KconfigTests(unittest.TestCase):
 
 
 class AvatarTests(unittest.TestCase):
-    CONFIG = "A=1\nCONFIG_ELENA_AVATAR_ELENA=y\n# CONFIG_ELENA_AVATAR_EMOJI is not set\n"
-
-    def test_selecting_emoji_flips_both_choice_lines(self):
+    def test_set_avatar_writes_the_string(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "sdkconfig"
-            path.write_text(self.CONFIG, encoding="utf-8")
-            select_avatar(path, "emoji")
-            self.assertEqual(
-                path.read_text(),
-                "A=1\n# CONFIG_ELENA_AVATAR_ELENA is not set\nCONFIG_ELENA_AVATAR_EMOJI=y\n",
-            )
+            path.write_text('A=1\nCONFIG_ELENA_AVATAR="elena"\nB=2\n', encoding="utf-8")
+            set_avatar(path, "emoji")
+            self.assertEqual(path.read_text(), 'A=1\nCONFIG_ELENA_AVATAR="emoji"\nB=2\n')
 
-    def test_selecting_elena_changes_nothing(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / "sdkconfig"
-            path.write_text(self.CONFIG, encoding="utf-8")
-            select_avatar(path, "elena")
-            self.assertEqual(path.read_text(), self.CONFIG)
-
-    def test_selecting_refuses_a_build_without_the_choice(self):
+    def test_set_avatar_refuses_a_build_without_the_option(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "sdkconfig"
             path.write_text("A=1\n", encoding="utf-8")
             with self.assertRaises(SystemExit):
-                select_avatar(path, "emoji")
+                set_avatar(path, "emoji")
+
+    def make_avatar(self, firmware, name, renderer="gif"):
+        folder = firmware / "main" / "boards" / "elena-stackchan" / "avatars" / name
+        folder.mkdir(parents=True)
+        (folder / "avatar.json").write_text(json.dumps({"renderer": renderer}), encoding="utf-8")
+        return folder
+
+    def test_avatar_dir_refuses_bad_names(self):
+        import build_firmware_image as image
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as tmp:
+            firmware = Path(tmp)
+            self.make_avatar(firmware, "real")
+            (firmware / "main" / "boards" / "elena-stackchan" / "avatars" / "empty").mkdir()
+            with mock.patch.object(image, "FIRMWARE", firmware):
+                for name in ("../x", "/etc", "Emoji", "", "missing", "empty"):
+                    with self.subTest(name=name), self.assertRaises(SystemExit) as stopped:
+                        avatar_dir(name)
+                    self.assertIn(name, str(stopped.exception))
+
+    def test_avatar_dir_returns_the_folder(self):
+        import build_firmware_image as image
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as tmp:
+            firmware = Path(tmp)
+            folder = self.make_avatar(firmware, "real_one-2")
+            with mock.patch.object(image, "FIRMWARE", firmware):
+                self.assertEqual(avatar_dir("real_one-2"), folder)
 
     def write_assets(self, directory, data):
         path = Path(directory) / "generated_assets.bin"
         path.write_bytes(data)
         return path
 
-    def test_elena_assets_must_contain_her_gifs(self):
+    def test_gif_avatar_assets_must_contain_gifs(self):
         with tempfile.TemporaryDirectory() as tmp:
-            check_avatar_assets(self.write_assets(tmp, b"xxGIF89axx"), "elena")
+            folder = self.make_avatar(Path(tmp), "a", "gif")
+            check_avatar_assets(self.write_assets(tmp, b"xxGIF89axx"), folder)
             with self.assertRaises(SystemExit):
-                check_avatar_assets(self.write_assets(tmp, b"xxPNGxx"), "elena")
+                check_avatar_assets(self.write_assets(tmp, b"xxPNGxx"), folder)
 
-    def test_emoji_assets_must_not_contain_stale_gifs(self):
+    def test_image_avatar_assets_must_not_contain_gifs(self):
         with tempfile.TemporaryDirectory() as tmp:
-            check_avatar_assets(self.write_assets(tmp, b"xxPNGxx"), "emoji")
+            folder = self.make_avatar(Path(tmp), "a", "image")
+            check_avatar_assets(self.write_assets(tmp, b"xxPNGxx"), folder)
             with self.assertRaises(SystemExit):
-                check_avatar_assets(self.write_assets(tmp, b"xxGIF89axx"), "emoji")
+                check_avatar_assets(self.write_assets(tmp, b"xxGIF89axx"), folder)
+
+
+class AvatarSelectionTests(unittest.TestCase):
+    """main() validates the avatar before it spends minutes on a build."""
+
+    def run_main(self, *arguments):
+        import build_firmware_image as image
+        from unittest import mock
+        with mock.patch.object(image, "run") as build, \
+                mock.patch.object(image, "resolve_selection", return_value="CONFIG_X"), \
+                mock.patch.dict("os.environ", {"IDF_PATH": "fake"}), \
+                mock.patch.object(sys, "argv", ["image", "--xiaozhi-cloud", *arguments]), \
+                self.assertRaises(SystemExit) as stopped:
+            image.main()
+        build.assert_not_called()
+        return stopped.exception
+
+    def test_missing_avatar_stops_before_the_build(self):
+        self.assertIn("nope", str(self.run_main("--avatar", "nope")))
+
+    def test_avatar_with_another_board_stops_before_the_build(self):
+        exit_error = self.run_main("--board", "m5stack/core-s3", "--variant", "m5stack-core-s3",
+                                   "--avatar", "emoji")
+        self.assertEqual(exit_error.code, 2)
 
 
 class NamingTests(unittest.TestCase):
@@ -184,6 +226,9 @@ class SelectionTests(unittest.TestCase):
             locale = firmware/'main/assets/locales/es-ES'
             locale.mkdir(parents=True)
             (locale/'language.json').write_text(json.dumps({'strings': {'LISTENING': 'Escuchando...'}}))
+            elena=firmware/'main/boards/elena-stackchan/avatars/elena'
+            elena.mkdir(parents=True)
+            (elena/'avatar.json').write_text(json.dumps({'renderer': 'gif'}))
             calls = []
             def run(*args):
                 calls.append(args)
