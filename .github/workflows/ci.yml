@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  tools:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: make test-tools
+
+  server:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg libopus0
+      - uses: astral-sh/setup-uv@v6
+      - run: make setup-server
+      - run: make test-server
+
+  firmware:
+    runs-on: ubuntu-24.04
+    container:
+      image: espressif/idf:v6.1
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Test build scripts
+        working-directory: firmware
+        run: |
+          . "$IDF_PATH/export.sh"
+          python -m unittest discover -s scripts/tests
+          cd docker/firmware-builder
+          python -m unittest test_firmware_builder
+      - name: Build for CoreS3
+        working-directory: firmware
+        run: |
+          git config --global --add safe.directory '*'
+          . "$IDF_PATH/export.sh"
+          python scripts/build.py m5stack/core-s3 --name m5stack-core-s3

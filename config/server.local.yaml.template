@@ -1,0 +1,45 @@
+# Overrides for the server's config.yaml, using only services on this machine.
+# `make server-config` writes the result to data/.config.yaml, which is gitignored.
+
+selected_module:
+  VAD: SileroVAD
+  ASR: LocalSTT
+  LLM: LocalLLM
+  TTS: LocalTTS
+  Memory: nomem
+  Intent: nointent
+
+prompt: |
+  Eres Elena, una pequeña robot de escritorio. Responde en el idioma de la persona,
+  con frases breves y naturales, porque tu respuesta se convertirá en voz.
+
+ASR:
+  # .localaudio/nemotron-supertonic-audiocpp
+  LocalSTT:
+    type: openai
+    api_key: none
+    base_url: http://127.0.0.1:18961/v1/audio/transcriptions
+    model_name: elena-stt
+    output_dir: tmp/
+
+LLM:
+  # Model gate, Qwen3.8 Flash-Next backend
+  LocalLLM:
+    type: openai
+    api_key: "@BASALT_API_KEY@"
+    base_url: http://127.0.0.1:8080/v1
+    model_name: Qwen3.8-Flash-Next-GSQ-RCO-IQ3_XXS
+
+TTS:
+  # .localaudio/nemotron-supertonic-audiocpp
+  LocalTTS:
+    type: custom
+    method: POST
+    url: http://127.0.0.1:18962/v1/audio/speech
+    format: wav
+    output_dir: tmp/
+    params:
+      model: elena-tts
+      input: "{prompt_text}"
+      language: es
+      response_format: wav

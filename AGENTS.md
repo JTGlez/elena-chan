@@ -6,9 +6,10 @@ Custom StackChan robot (M5Stack CoreS3, ESP32-S3) with a local STT → LLM → T
 
 1. [Repository layout](#repository-layout)
 2. [Rules for all work](#rules-for-all-work)
-3. [Submodules and upstream changes](#submodules-and-upstream-changes)
-4. [Knowledge graphs](#knowledge-graphs)
-5. [Local voice lab](#local-voice-lab)
+3. [Development environment](#development-environment)
+4. [Submodules and upstream changes](#submodules-and-upstream-changes)
+5. [Knowledge graphs](#knowledge-graphs)
+6. [Local voice lab](#local-voice-lab)
 
 ## Repository layout
 
@@ -18,6 +19,9 @@ elena-chan/
 ├── server/           # Submodule: JTGlez/xiaozhi-esp32-server, branch elena
 ├── brain/            # Hermes profile, SOUL.md, stackchan_mcp.py; no secrets
 ├── docs/             # Decisions and tested version combinations
+├── tools/            # Setup scripts and helpers; `make help` lists entry points
+├── config/           # Templates without secrets
+├── .github/          # CI workflows
 ├── .claude/skills/   # stackchan-flash: load, back up, and restore firmware
 ├── vendor/           # Read-only reference code and graphs (gitignored)
 ├── .localworker/     # Local model workers (gitignored)
@@ -52,6 +56,29 @@ Hermes has no fork. Install it separately and record the tested version in `docs
 ### Validation
 
 - A successful build does not validate hardware. Report what was tested on the robot and what was not.
+
+## Development environment
+
+```sh
+make check-system   # Reports missing apt packages; installs nothing
+make setup          # Submodules, server environment, ESP-IDF v6.1
+make test           # All test suites
+make firmware       # Builds for CoreS3; never writes to the robot
+make server-config  # Generates data/.config.yaml for local services
+make server-run     # Starts the server
+```
+
+Each Python environment stays separate:
+
+| Environment | Location | Python | Used for |
+|---|---|---|---|
+| Server | `server/main/xiaozhi-server/.venv` | 3.10 | Server code and tests, with CPU torch |
+| ESP-IDF | Managed by ESP-IDF under `~/.espressif` | 3.12 | Firmware builds and script tests |
+| System | `python3` | Any current version | `tools/` and skills, standard library only |
+
+Activate ESP-IDF in a shell with `source tools/idf-env.sh`. Other ESP-IDF versions on the machine are unaffected.
+
+The server's two skipped tests are skipped upstream through a fixed `pytest.skip`. Leave them as they are.
 
 ## Submodules and upstream changes
 
