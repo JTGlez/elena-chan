@@ -637,7 +637,10 @@ def make_handler(viewer):
             for name, value in (extra or {}).items():
                 self.send_header(name, value)
             self.end_headers()
-            self.wfile.write(body)
+            try:
+                self.wfile.write(body)
+            except (BrokenPipeError, ConnectionResetError):
+                pass  # The browser closed the page or moved on.
 
         def do_GET(self):
             if self.path == "/":

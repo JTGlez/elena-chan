@@ -237,6 +237,20 @@ class RecordingCachedStripsTests(unittest.TestCase):
             self.assertTrue((Path(tmp) / "session/strips/00000005.rgb565").exists())
 
 
+class HttpTests(unittest.TestCase):
+    def test_a_browser_closing_the_page_is_not_an_error(self):
+        class ClosedPipe:
+            def write(self, _):
+                raise BrokenPipeError
+
+        handler_class = sv.make_handler(None)
+        handler = handler_class.__new__(handler_class)
+        handler.wfile = ClosedPipe()
+        handler.send_response = handler.send_header = lambda *_: None
+        handler.end_headers = lambda: None
+        handler.respond(404, "text/plain", b"Not yet")
+
+
 class ArgumentTests(unittest.TestCase):
     def test_refuses_raw_whole_frames(self):
         with self.assertRaises(SystemExit):
