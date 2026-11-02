@@ -4,8 +4,8 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
-BOARD := m5stack/core-s3
-BOARD_VARIANT := m5stack-core-s3
+BOARD := elena-stackchan
+BOARD_VARIANT := elena-stackchan
 LANGUAGE := es-ES
 SERVER_DIR := server/main/xiaozhi-server
 SERVER_PY := $(CURDIR)/$(SERVER_DIR)/.venv/bin/python
@@ -67,11 +67,11 @@ update-server-lock: ## Refresh the server's lock after editing its requirements
 	cd $(SERVER_DIR) && $(UV_COMPILE) -o requirements.lock $(if $(UPGRADE),--upgrade-package $(UPGRADE))
 
 firmware: ## Build the firmware for the configured board
-	$(IDF_ENV) && cd firmware && python scripts/build.py $(BOARD) --name $(BOARD_VARIANT)
+	$(IDF_ENV) && cd firmware && python scripts/build.py $(BOARD) --name $(BOARD_VARIANT) --language $(LANGUAGE)
 
 firmware-image: ## Build an image in dist/firmware; set PURPOSE, optional LANGUAGE, XIAOZHI_CLOUD=1
 	$(IDF_ENV) && python $(CURDIR)/tools/build_firmware_image.py --purpose "$(PURPOSE)" \
-		--language "$(LANGUAGE)" $(if $(XIAOZHI_CLOUD),--xiaozhi-cloud)
+		--language "$(LANGUAGE)" --board "$(BOARD)" --variant "$(BOARD_VARIANT)" $(if $(XIAOZHI_CLOUD),--xiaozhi-cloud)
 
 firmware-index: ## Refresh the compile database that VS Code reads
 	$(IDF_ENV) && cd firmware && idf.py reconfigure

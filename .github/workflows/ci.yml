@@ -33,6 +33,13 @@ jobs:
       - run: make test-server
 
   firmware:
+    strategy:
+      matrix:
+        include:
+          - board: elena-stackchan
+            variant: elena-stackchan
+          - board: m5stack/core-s3
+            variant: m5stack-core-s3
     runs-on: ubuntu-24.04
     container:
       # v6.1; see "Update dependencies" in AGENTS.md
@@ -51,10 +58,10 @@ jobs:
           python -m unittest discover -s scripts/tests
           cd docker/firmware-builder
           python -m unittest test_firmware_builder
-      - name: Build for CoreS3
+      - name: Build selected board
         working-directory: firmware
         run: |
           git config --global --add safe.directory '*'
           . "$IDF_PATH/export.sh"
-          python scripts/build.py m5stack/core-s3 --name m5stack-core-s3
+          python scripts/build.py "${{ matrix.board }}" --name "${{ matrix.variant }}"
           git diff --exit-code -- dependencies.lock

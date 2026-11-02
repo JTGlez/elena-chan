@@ -6,6 +6,7 @@ Run inside the ESP-IDF environment: `make firmware-image PURPOSE="..."`.
 
 import argparse
 import hashlib
+import runpy
 import json
 import os
 import re
@@ -19,8 +20,8 @@ ROOT = Path(__file__).resolve().parent.parent
 FIRMWARE = ROOT / "firmware"
 DIST = ROOT / "dist" / "firmware"
 ENV_FILE = ROOT / "config" / "firmware.local.env"
-BOARD = "m5stack/core-s3"
-VARIANT = "m5stack-core-s3"
+BOARD = "elena-stackchan"
+VARIANT = "elena-stackchan"
 
 
 def slugify(text: str) -> str:
@@ -91,12 +92,43 @@ def run(*command: str) -> None:
     subprocess.run(command, cwd=FIRMWARE, check=True)
 
 
+def source_fingerprint(directory: Path) -> str:
+    """Identify the delivered working tree, including uncommitted new sources."""
+    result = subprocess.run(["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+                            cwd=directory, check=True, capture_output=True)
+    digest = hashlib.sha256()
+    for name in sorted(set(result.stdout.split(b"\0")) - {b""}):
+        path = directory / os.fsdecode(name)
+        digest.update(name + b"\0")
+        digest.update(hashlib.sha256(path.read_bytes()).digest() if path.is_file() else b"missing")
+    return digest.hexdigest()
+
+
+def resolve_selection(board: str, variant: str) -> str:
+    """Validate against the same board registry that the canonical builder uses."""
+    if not re.fullmatch(r"[a-z0-9./-]+", board) or ".." in board.split("/"):
+        raise ValueError("Invalid board directory")
+    builder = runpy.run_path(str(FIRMWARE / "scripts" / "build.py"))
+    variants = builder["_collect_variants"](idf_version=(6, 1, 0))
+    if not any(v["board"] == board and v["name"] == variant for v in variants):
+        raise ValueError(f"Unknown board/variant: {board} / {variant}")
+    config = json.loads((FIRMWARE / "main" / "boards" / board / "config.json").read_text())
+    preset = next(b for b in builder["_get_builds_for_idf"](config, (6, 1, 0)) if b["name"] == variant)
+    return builder["_resolve_board_config"](board, config["target"], preset.get("sdkconfig_append", []), variant_name=variant)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--purpose", default="", help="Short purpose; defaults to the firmware branch")
     parser.add_argument("--language", default="es-ES", help="Firmware language locale")
     parser.add_argument("--xiaozhi-cloud", action="store_true", help="Keep the default Xiaozhi cloud server")
+    parser.add_argument("--board", default=BOARD, help="Board directory")
+    parser.add_argument("--variant", default=VARIANT, help="Board variant name")
     args = parser.parse_args()
+    try:
+        board_symbol = resolve_selection(args.board, args.variant)
+    except ValueError as error:
+        parser.error(str(error))
 
     if "IDF_PATH" not in os.environ:
         raise SystemExit("ESP-IDF is not active. Use `make firmware-image`.")
@@ -107,8 +139,11 @@ def main() -> int:
     dirty = bool(git("status", "--porcelain"))
     commit = git("rev-parse", "--short=7", "HEAD")
 
-    run(sys.executable, "scripts/build.py", BOARD, "--name", VARIANT, "--language", args.language)
+    source_sha256 = source_fingerprint(FIRMWARE)
+    run(sys.executable, "scripts/build.py", args.board, "--name", args.variant, "--language", args.language)
     sdkconfig = FIRMWARE / "sdkconfig"
+    if f"{board_symbol}=y" not in sdkconfig.read_text(encoding="utf-8").splitlines():
+        raise SystemExit("The configured board does not match the requested image.")
     if url:
         set_ota_url(sdkconfig, url)
         run("idf.py", "build")
@@ -117,16 +152,19 @@ def main() -> int:
         raise SystemExit("The built app does not contain OTA_URL.")
     match = re.search(r'^CONFIG_OTA_URL="(.*)"$', sdkconfig.read_text(encoding="utf-8"), re.MULTILINE)
 
+    if source_fingerprint(FIRMWARE) != source_sha256:
+        raise SystemExit("Firmware sources changed during the build; rebuild before packaging.")
     created = datetime.now(timezone.utc).astimezone()
     destination = DIST / image_name(created, purpose, commit, dirty)
     store_image(build, sdkconfig, FIRMWARE / "dependencies.lock", destination, {
         "purpose": purpose,
         "created_at": created.isoformat(timespec="seconds"),
-        "board": BOARD,
-        "variant": VARIANT,
+        "board": args.board,
+        "variant": args.variant,
         "idf_version": os.environ.get("ESP_IDF_VERSION", ""),
         "firmware_commit": git("rev-parse", "HEAD"),
         "firmware_dirty": dirty,
+        "firmware_source_sha256": source_sha256,
         "repository_commit": git("rev-parse", "HEAD", cwd=ROOT),
         "language": args.language,
         "ota_url": match.group(1) if match else "",

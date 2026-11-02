@@ -11,6 +11,16 @@ Run from the repository root:
 make firmware-image PURPOSE="keep open conversation"
 ```
 
+The default board and variant are `elena-stackchan`. To build the generic CoreS3:
+
+```bash
+make firmware-image BOARD=m5stack/core-s3 BOARD_VARIANT=m5stack-core-s3 PURPOSE="generic comparison"
+```
+
+The manifest identifies the selected board and variant. Initial migration from
+CoreS3 to Elena uses a reviewed `stackchan-flash` write; retain NVS. Subsequent
+OTA packages must match `elena-stackchan`; see `docs/avatar-validation.md`.
+
 To use the Xiaozhi cloud server instead of a local one, add `XIAOZHI_CLOUD=1`. Only do this when the user asks, because voice then leaves this machine. The firmware language defaults to `es-ES`; change it with `LANGUAGE=en-US`.
 
 Write `PURPOSE` as two to five words describing what this build is for. Without it, the firmware branch name is used.
