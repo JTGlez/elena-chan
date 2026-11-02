@@ -1,0 +1,16 @@
+# Copy of this file: config/gate.toml, created by `model_gate.py init` and kept out of version control.
+# Worker paths are relative to the config file. Worker requirements: references/worker-contract.md
+
+# Seconds to wait for running requests before a switch gives up, and for a model to load.
+drain_timeout = 300
+load_timeout = 180
+
+# One block per model server. Only one runs at a time.
+[[backend]]
+name = "example"                                      # used by `use` and `ready`
+listen_port = 8080                                    # clients connect here, through the gate
+upstream_port = 18080                                 # the worker listens here
+worker = "../../../../.localworker/example-worker"    # folder with docker-compose.yml and .env
+key_var = "EXAMPLE_API_KEY"                           # the worker's .env holds the API key under this name
+models = ["example-model"]                            # ids answered by /v1/models; the first is the default
+# hermes_provider = "example"                         # name for the Hermes provider; defaults to `name`

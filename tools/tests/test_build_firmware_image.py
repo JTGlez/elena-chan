@@ -79,3 +79,78 @@ class StoreImageTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SelectionTests(unittest.TestCase):
+    def test_invalid_board_variant_stops_before_build(self):
+        import build_firmware_image as image
+        from unittest import mock
+        for board, variant in [('elena-stackchan','m5stack-core-s3'), ('missing','missing')]:
+            with self.subTest(board=board), mock.patch.object(image, 'run') as build:
+                with self.assertRaises((ValueError, SystemExit)):
+                    image.resolve_selection(board, variant)
+                build.assert_not_called()
+
+    def test_selected_board_reaches_build_and_manifest(self):
+        self.check_image('elena-stackchan', 'elena-stackchan', 'CONFIG_BOARD_TYPE_ELENA_STACKCHAN')
+
+    def test_generic_cores3_override(self):
+        self.check_image('m5stack/core-s3', 'm5stack-core-s3', 'CONFIG_BOARD_TYPE_M5STACK_CORE_S3')
+
+    def test_app_built_in_another_language_is_not_packaged(self):
+        with self.assertRaises(SystemExit) as stopped:
+            self.check_image('elena-stackchan', 'elena-stackchan', 'CONFIG_BOARD_TYPE_ELENA_STACKCHAN',
+                             app_bytes='聆听中...'.encode())
+        self.assertIn('es-ES', str(stopped.exception))
+
+    def check_image(self, board, variant, symbol, app_bytes=b'app Escuchando... app'):
+        import build_firmware_image as image
+        from unittest import mock
+        # The actual selection resolver uses the real versioned board configuration.
+        self.assertEqual(image.resolve_selection(board, variant), symbol)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            firmware = root/'firmware'
+            build = firmware/'build'
+            build.mkdir(parents=True)
+            (firmware/'dependencies.lock').write_text('version: 3\n')
+            locale = firmware/'main/assets/locales/es-ES'
+            locale.mkdir(parents=True)
+            (locale/'language.json').write_text(json.dumps({'strings': {'LISTENING': 'Escuchando...'}}))
+            calls = []
+            def run(*args):
+                calls.append(args)
+                (firmware/'sdkconfig').write_text(f'{symbol}=y\nCONFIG_OTA_URL="https://test.invalid/ota/"\n')
+                (build/'app.bin').write_bytes(app_bytes)
+                (build/'flasher_args.json').write_text(json.dumps({'flash_files': {'0x20000':'app.bin'}}))
+            with mock.patch.object(image, 'FIRMWARE', firmware), mock.patch.object(image, 'ROOT', root), \
+                 mock.patch.object(image, 'DIST', root/'dist'), mock.patch.object(image, 'git', return_value='abc1234'), \
+                 mock.patch.object(image, 'run', side_effect=run), mock.patch.object(image, 'source_fingerprint', return_value='snapshot'), mock.patch.object(image, 'resolve_selection', return_value=symbol), \
+                 mock.patch.dict('os.environ', {'IDF_PATH':'fake'}), \
+                 mock.patch.object(sys, 'argv', ['image','--board',board,'--variant',variant,'--xiaozhi-cloud']):
+                self.assertEqual(image.main(), 0)
+            self.assertIn(board, calls[0])
+            self.assertIn(variant, calls[0])
+            manifest = json.loads(next((root/'dist').glob('*/manifest.json')).read_text())
+            self.assertEqual((manifest['board'],manifest['variant']), (board,variant))
+            self.assertIn(f'{symbol}=y', next((root/'dist').glob('*/sdkconfig')).read_text())
+
+class SourceIdentityTests(unittest.TestCase):
+    def test_fingerprint_includes_tracked_and_new_source_but_not_ignored_build(self):
+        import build_firmware_image as image
+        import subprocess
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            subprocess.run(['git','init','-q',str(root)],check=True)
+            (root/'.gitignore').write_text('build/\n')
+            (root/'main.cc').write_text('first\n')
+            subprocess.run(['git','-C',str(root),'add','.gitignore','main.cc'],check=True)
+            a=image.source_fingerprint(root)
+            (root/'build').mkdir()
+            (root/'build/app.bin').write_bytes(b'generated')
+            self.assertEqual(a,image.source_fingerprint(root))
+            (root/'main.cc').write_text('second\n')
+            b=image.source_fingerprint(root)
+            self.assertNotEqual(a,b)
+            (root/'new.cc').write_text('new source\n')
+            self.assertNotEqual(b,image.source_fingerprint(root))

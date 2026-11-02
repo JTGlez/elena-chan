@@ -23,7 +23,7 @@ elena-chan/
 ├── config/           # Templates without secrets
 ├── dist/firmware/    # Firmware images ready to flash (gitignored)
 ├── .github/          # CI workflows
-├── .claude/skills/   # stackchan-flash: load, back up, and restore firmware
+├── .claude/skills/   # Firmware build and flash, local models, delegation to Hermes
 ├── vendor/           # Read-only reference code and graphs (gitignored)
 ├── .localworker/     # Local model workers (gitignored)
 └── .localaudio/      # Local voice lab (gitignored)
@@ -52,7 +52,7 @@ Hermes has no fork. Install it separately and record the tested version in `docs
 ### Flashing the robot
 
 - Use only the `stackchan-flash` skill. Do not use `idf.py flash` or esptool directly.
-- Every write to the robot needs explicit user confirmation.
+- Every write to the robot needs explicit user confirmation, for that specific write. The guard lets an agent run the skill, and blocks `--allow-nvs-overwrite`, flash erasure and eFuse writes.
 - Build images with the `stackchan-build` skill. They live in `dist/firmware/<date>-<time>-<purpose>-<commit>/`.
 
 ### Validation
@@ -86,12 +86,28 @@ Activate ESP-IDF in a shell with `source tools/idf-env.sh`. Other ESP-IDF versio
 
 The server's two skipped tests are skipped upstream through a fixed `pytest.skip`. Leave them as they are.
 
+### Skills that need local setup
+
+Details of a machine stay out of tracked files: each skill reads them from an untracked config created from a tracked example.
+
+| Skill | Needs | Set up |
+|---|---|---|
+| `stackchan-build` | `make setup`, a server address | `config/firmware.local.env`, from its `.example` |
+| `stackchan-flash` | The robot attached | Its "First use with a robot" section |
+| `local-model` | An NVIDIA GPU, Docker, model workers | Its "Set up" section; `doctor` reports what is missing |
+| `hermes-delegate` | Hermes, a route to a model | `.hermes-delegate.local.json`, from `.hermes-delegate.local.example.json`; then `install-guard` |
+
+`.hermes-delegate.local.json` is the only place that joins `local-model` and `hermes-delegate`. To delegate to a remote model, set its provider and model there and remove `ready_command`.
+
 ## Submodules and upstream changes
 
 ### Fork branches
 
+Firmware and server code lives only in the forks. This repository records which commit of each fork it uses.
+
 - `main` mirrors upstream and never carries our commits.
-- `elena` starts at the pinned base and holds all our changes.
+- `elena` starts at the pinned base and holds all our finished changes.
+- `feature/<name>` holds larger work in progress and merges into `elena` when ready.
 
 Each `elena-chan` commit records an exact combination of firmware and server.
 
@@ -113,11 +129,11 @@ git -C server sparse-checkout set main/xiaozhi-server
 
 ### Make a change
 
-1. Work inside the submodule on `elena`. `git submodule update` leaves a detached HEAD, so run `git switch elena` before committing.
+1. Work inside the submodule on `elena` or a `feature/<name>` branch. `git submodule update` leaves a detached HEAD, so switch to the branch before committing.
 2. Commit and push to the fork.
 3. In the root, commit the updated pointer together with anything that depends on it.
 
-Never publish a pointer to a commit that is missing from its fork. `push.recurseSubmodules on-demand` prevents this.
+Never publish a pointer to a commit that is missing from its fork. `push.recurseSubmodules on-demand` prevents this, but it can also publish the submodule's whole branch of the same name, and both forks are public. Follow the order above so a root push publishes nothing extra.
 
 ### Keep changes easy to merge
 
@@ -173,6 +189,7 @@ Each graph covers one codebase.
 | Xiaozhi v2.2.4 | `vendor/firmwares/xiaozhi-esp32-v2.2.4/graphify-out/graph.json` | Official firmware's base, with its patch applied |
 | Nous-Girl | `vendor/firmwares/nous-girl-stackchan/graphify-out/graph.json` | Server, Hermes add-ons, docs, and wake words; its firmware is unpublished |
 | `xiaozhi-esp32-server` `4745186` | `vendor/servers/xiaozhi-esp32-server/graphify-out/graph.json` | Unmodified `main/xiaozhi-server` code, without its docs |
+| ESP-IDF v6.1 | `vendor/sdk/esp-idf-v6.1/graphify-out/graph.json` | Code of the components in the `elena-stackchan` build, ESP32-S3 only, without submodules, tests, docs, examples, or register structs; scope in its `.graphifyignore` |
 
 ### Connected graphs
 

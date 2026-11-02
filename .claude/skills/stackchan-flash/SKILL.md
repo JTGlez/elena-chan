@@ -31,6 +31,14 @@ The firmware does not have to be ours: anything with a `flasher_args.json`, a bi
 
 Backups always live in `.claude/skills/stackchan-flash/backups/<name>/` as `firmware.bin` and `manifest.json`. That location is fixed, and `backups/snapshots/` holds the state saved before each write.
 
+## First use with a robot
+
+Each robot has its own NVS and baseline, and both stay out of the repository. Before the first write:
+
+1. Attach the robot and run `status`. If it is not on `/dev/ttyACM0`, set `STACKCHAN_PORT`.
+2. Run `backup`, and have the user confirm that the robot works in that state.
+3. Write `{"backup": "<name>"}` to `backups/baseline.json`. `rollback` refuses to run until this file exists.
+
 ## Workflow for writing
 
 1. Run the dry run and show the user the plan.
@@ -43,9 +51,9 @@ Do not run an `--execute` to get past a `STOP:` message. Read it first. The `--a
 
 ## What this robot does that is not obvious
 
-**USB and WSL**
+**USB**
 - It is native USB-Serial/JTAG: `303a:1001`, `/dev/ttyACM0`. There is no CP210x or CH340 bridge, so `/dev/ttyUSB*` will never appear.
-- To attach it, in an admin PowerShell: `usbipd list`, then `usbipd attach --wsl --busid <BUSID>`. The bus ID can change between ports.
+- On WSL, attach it from an admin PowerShell: `usbipd list`, then `usbipd attach --wsl --busid <BUSID>`. The bus ID can change between ports.
 - If it does not connect, enter download mode: hold RST (beside the microSD slot) about 3 s until the green LED lights, then release.
 - Close any serial monitor first. Only one process can hold the port.
 
@@ -85,7 +93,7 @@ Do not run an `--execute` to get past a `STOP:` message. Read it first. The `--a
 
 `backups/baseline.json` names the backup that `rollback` loads. A load refuses a file with another hash or a device with another MAC.
 
-The baseline is stock firmware 1.4.4. Factory images ship through M5Burner and do not track the public repo, so building from source does not recreate stock. The dump is the only exact way back.
+Use the robot's stock firmware as the baseline when you can. Factory images ship through M5Burner and do not track the public repo, so building from source does not recreate stock. A dump is the only exact way back.
 
 To change the baseline, run `backup`, have the user confirm that the robot works in that state, then update `baseline.json`.
 
