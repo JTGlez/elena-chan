@@ -11,3 +11,10 @@ __pycache__/
 
 # Local audio lab: builds, Docker image archives and model weights (not tracked)
 /.localaudio/
+
+# Skill tied to this machine's local model workers (not tracked)
+/.claude/skills/local-model/
+
+# Editor settings and stray CMake output; they depend on this machine
+/.vscode/
+/build/
