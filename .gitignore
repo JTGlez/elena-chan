@@ -31,3 +31,6 @@ __pycache__/
 
 # Local assets
 /elena-chan-avatar-kit-v3-platinum
+
+# Agent working notes and reports
+/.superpowers/
