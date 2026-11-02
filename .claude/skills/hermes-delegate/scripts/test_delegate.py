@@ -1,4 +1,6 @@
 """Tests for delegate.py and guard_hook.py. They use a fake hermes: no model, no GPU."""
+import contextlib
+import io
 import json
 import os
 import signal
@@ -11,6 +13,7 @@ import textwrap
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 HERE = Path(__file__).resolve().parent
 DELEGATE = HERE / "delegate.py"
@@ -48,6 +51,16 @@ FAKE_HERMES = textwrap.dedent("""\
     #!/usr/bin/env python3
     import json, os, signal, sys, time
     from pathlib import Path
+    gateway = Path(os.environ["FAKE_ARGS"]).with_name("gateway-running")
+    if sys.argv[1:2] == ["--run-module"]:  # the session helper, run inside Hermes' runtime
+        with open(os.environ["FAKE_ARGS"] + ".helper", "a") as f:
+            f.write(json.dumps(sys.argv[1:]) + "\\n")
+        if os.environ.get("FAKE_HELPER") == "broken":
+            sys.exit(1)
+        if sys.argv[-2] == "interrupt" and os.environ.get("FAKE_HELPER") != "stuck":
+            gateway.unlink(missing_ok=True)
+        print(json.dumps({"running": gateway.exists()}))
+        sys.exit(0)
     with open(os.environ["FAKE_ARGS"], "a") as f:
         f.write(json.dumps(sys.argv[1:]) + "\\n")
     mode = os.environ.get("FAKE_MODE", "ok")
@@ -55,20 +68,49 @@ FAKE_HERMES = textwrap.dedent("""\
     def emit(**event):
         print(json.dumps({"timestamp": 1, **event}), flush=True)
     def interrupted(*_):
-        emit(type="result", session_id=session, exit_code=130, text="", duration_ms=5,
-             tokens={"input": 1, "output": 1, "total": 2})
+        if mode == "gateway":  # the real client only detaches: the session keeps running
+            print("Detached; accepted work continues at the gateway.", file=sys.stderr, flush=True)
+            emit(type="result", session_id="", exit_code=130, text="", duration_ms=5,
+                 tokens={"input": 0, "output": 0, "total": 0})
+        else:
+            emit(type="result", session_id=session, exit_code=130, text="", duration_ms=5,
+                 tokens={"input": 1, "output": 1, "total": 2})
         sys.exit(130)
     signal.signal(signal.SIGINT, interrupted)
-    emit(type="system", subtype="init", model="fake", session_id=session)
-    if mode == "crash":
+    emit(type="system", subtype="init", model="fake", session_id="")
+    print("Session: " + session, file=sys.stderr, flush=True)
+    if mode in ("gateway", "crash_gateway"):
+        gateway.touch()
+    if mode in ("crash", "crash_gateway"):
         os._exit(3)
     emit(type="tool_use", name="terminal", input={"command": "git status"})
     emit(type="tool_result", name="terminal", output="BLOCKED: nope", duration_ms=4, is_error=True)
     emit(type="text", text="working")
+    if mode == "partial":
+        sys.stdout.write('{"timestamp": 1, "type": "tool_use", "name": "split"')
+        sys.stdout.flush()
+        time.sleep(1)
+        print(', "input": {}}', flush=True)
+    if mode == "chatty":
+        for number in range(400):
+            emit(type="tool_use", name="read_file", input={"path": f"f{number}"})
+    if mode == "writes":
+        emit(type="tool_use", name="write_file", input={"path": "src/a.c", "content": "x"})
+        emit(type="tool_use", name="patch", input={"path": "src/b.h", "new_string": "y"})
+        time.sleep(30)
     if mode == "hang":
         time.sleep(30)
-    emit(type="result", session_id=session, exit_code=0, text="Done: abc123", duration_ms=7,
+    if mode == "gateway":
+        while gateway.exists():
+            time.sleep(0.05)
+        emit(type="result", session_id=session, exit_code=130, text="", duration_ms=5,
+             tokens={"input": 3, "output": 4, "total": 7})
+        sys.exit(130)
+    text = "R" * 5000 + " END-OF-REPORT" if mode == "long_report" else "Done: abc123"
+    emit(type="result", session_id=session, exit_code=0, text=text, duration_ms=7,
          tokens={"input": 10, "output": 20, "total": 30})
+    if mode == "linger":
+        time.sleep(30)
     """)
 
 READY = textwrap.dedent("""\
@@ -105,6 +147,7 @@ class DelegateTest(unittest.TestCase):
             "HERMES_DELEGATE_STATE": str(root / "state"),
             "HERMES_DELEGATE_CONFIG": str(self.config),
             "FAKE_ARGS": str(self.args),
+            "HERMES_HOME": str(root / "hermes-home"),
         }
         self.root = root
         self.addCleanup(self.kill_runs)
@@ -359,9 +402,425 @@ class DelegateTest(unittest.TestCase):
         self.assertEqual(status["turns"][0]["tool_calls"], 1)
         self.assertEqual(status["turns"][0]["tool_errors"], 1)
 
+    def wait_for_event(self, text, label="t1", timeout=10):
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            if text in "".join(p.read_text() for p in (self.root / "state" / label).glob("turn-*.jsonl")):
+                return
+            time.sleep(0.02)
+        self.fail(f"no {text} in the log")
+
+    def gateway_marker(self):
+        return self.args.with_name("gateway-running")
+
+    def session_row(self, description, session="sess-fake"):
+        home = self.root / "hermes-home"
+        home.mkdir(exist_ok=True)
+        db = sqlite3.connect(home / "state.db")
+        db.execute("create table if not exists sessions (id text, source text, cwd text, api_call_count int, "
+                   "input_tokens int, output_tokens int, cache_read_tokens int, last_activity_at real, "
+                   "last_activity_description text)")
+        db.execute("delete from sessions")
+        db.execute("insert into sessions values (?, 'tool', '/work', 7, 100, 50, 900, ?, ?)",
+                   (session, time.time() - 12, description))
+        db.commit()
+        db.close()
+
+    def test_watch_returns_at_its_deadline_while_the_turn_runs(self):
+        self.install()
+        self.start(env={"FAKE_MODE": "hang"})
+        began = time.time()
+        result = self.run_cmd("watch", "t1", "--timeout", "1")
+        self.assertLess(time.time() - began, 4)
+        self.assertEqual(result.returncode, 3, result.stdout + result.stderr)
+        self.assertIn("RUNNING", result.stdout)
+        self.assertIn("calls=1", result.stdout)
+        self.assertEqual(json.loads(self.run_cmd("status", "t1").stdout)["state"], "running")
+
+    def test_watch_timeout_zero_reads_once_and_returns(self):
+        self.install()
+        self.start(env={"FAKE_MODE": "hang"})
+        self.wait_for_event("tool_use")
+        began = time.time()
+        result = self.run_cmd("watch", "t1", "--timeout", "0")
+        self.assertLess(time.time() - began, 2)
+        self.assertEqual(result.returncode, 3)
+        self.assertIn("TOOL terminal", result.stdout)
+
+    def test_watch_is_bounded_by_default(self):
+        out = self.run_cmd("watch", "--help").stdout
+        self.assertIn("--timeout", out)
+        self.assertRegex(" ".join(out.split()), r"default:? 1800")
+
+    def test_watch_continues_after_its_deadline_without_repeating(self):
+        self.install()
+        self.start(env={"FAKE_MODE": "hang"})
+        self.wait_for_event("tool_use")
+        self.assertIn("TOOL terminal", self.run_cmd("watch", "t1", "--timeout", "0").stdout)
+        self.assertNotIn("TOOL terminal", self.run_cmd("watch", "t1", "--timeout", "0").stdout)
+
+    def test_a_line_cut_by_the_deadline_is_read_whole_next_time(self):
+        self.install()
+        self.start(env={"FAKE_MODE": "partial"})
+        self.wait_for_event('"split"')
+        first = self.run_cmd("watch", "t1", "--timeout", "0").stdout
+        second = self.run_cmd("watch", "t1", "--timeout", "5").stdout
+        self.assertIn("TOOL split", first + second)
+
+    def test_digest_summarizes_tools_and_keeps_errors(self):
+        self.install()
+        self.start(env={"FAKE_MODE": "writes"})
+        self.wait_for_event("src/b.h")
+        out = self.run_cmd("watch", "t1", "--timeout", "0", "--digest").stdout
+        self.assertNotIn("TOOL ", out)
+        self.assertIn("ERROR terminal", out)
+        self.assertIn("calls=3", out)
+        self.assertIn("src/a.c", out)
+        self.assertIn("src/b.h", out)
+
+    def test_second_watch_returns_when_the_client_lingers_after_its_result(self):
+        self.install()
+        self.start(env={"FAKE_MODE": "linger"})
+        self.assertEqual(self.run_cmd("watch", "t1", "--timeout", "5").returncode, 0)
+        began = time.time()
+        result = self.run_cmd("watch", "t1", "--timeout", "5")
+        self.assertLess(time.time() - began, 2)
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("RESULT exit=0", result.stdout)
+
+    def test_recycled_pid_is_not_taken_for_the_turn(self):
+        self.install()
+        self.start()
+        self.wait_finished()
+        other = subprocess.Popen(["sleep", "30"])
+        self.addCleanup(other.wait)
+        self.addCleanup(other.kill)
+        path = self.root / "state/t1/state.json"
+        state = json.loads(path.read_text())
+        state["pid"] = other.pid
+        path.write_text(json.dumps(state))
+        self.assertEqual(json.loads(self.run_cmd("status", "t1").stdout)["state"], "finished")
+        self.assertEqual(self.start("t2").returncode, 0)
+
+    def test_concurrent_watchers_all_finish_cleanly(self):
+        self.install()
+        self.start(env={"FAKE_MODE": "chatty"})
+        watchers = [subprocess.Popen([sys.executable, str(DELEGATE), "watch", "t1", "--poll", "0.001"],
+                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=self.env)
+                    for _ in range(6)]
+        for watcher in watchers:
+            out, err = watcher.communicate(timeout=20)
+            self.assertEqual(watcher.returncode, 0, err)
+            self.assertIn("RESULT exit=0", out)
+
+    def test_watch_leaves_the_run_state_alone(self):
+        self.install()
+        self.start(env={"FAKE_MODE": "hang"})
+        self.wait_for_event("tool_use")
+        path = self.root / "state/t1/state.json"
+        before = path.read_bytes(), path.stat().st_mtime_ns
+        self.run_cmd("watch", "t1", "--timeout", "0")
+        self.assertEqual((path.read_bytes(), path.stat().st_mtime_ns), before)
+
+    def test_killing_the_watcher_leaves_the_turn_running(self):
+        self.install()
+        self.start(env={"FAKE_MODE": "hang"})
+        watcher = subprocess.Popen([sys.executable, str(DELEGATE), "watch", "t1"],
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=self.env)
+        self.wait_for_event("tool_use")
+        watcher.kill()
+        watcher.wait()
+        self.assertEqual(json.loads(self.run_cmd("status", "t1").stdout)["state"], "running")
+
+    def test_session_id_is_known_while_the_turn_runs_and_after_a_crash(self):
+        self.install()
+        self.start(env={"FAKE_MODE": "hang"})
+        self.wait_for_event("tool_use")
+        self.assertEqual(json.loads(self.run_cmd("status", "t1").stdout)["session_id"], "sess-fake")
+        self.run_cmd("stop", "t1", "--wait", "5")
+        self.start("t2", env={"FAKE_MODE": "crash"})
+        self.run_cmd("watch", "t2", "--timeout", "5")
+        result = self.run_cmd("send", "t2", "--brief", str(self.brief))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.run_cmd("watch", "t2", "--timeout", "5")
+        args = self.calls()[-1]
+        self.assertEqual(args[args.index("--resume") + 1], "sess-fake")
+
+    def test_stop_really_stops_a_session_running_at_the_gateway(self):
+        self.install()
+        self.start(env={"FAKE_MODE": "gateway"})
+        self.wait_for_event("tool_use")
+        result = self.run_cmd("stop", "t1", "--wait", "5")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertFalse(self.gateway_marker().exists(), "the session is still running at the gateway")
+        self.assertIn("stopped", result.stdout)
+        helper = [json.loads(line) for line in Path(str(self.args) + ".helper").read_text().splitlines()]
+        self.assertEqual(helper[0][:4], ["--run-module", "cProfile", "-o", os.devnull])
+        self.assertEqual(helper[0][-2:], ["interrupt", "sess-fake"])
+
+    def test_stop_acts_on_the_gateway_even_when_the_client_is_gone(self):
+        self.install()
+        self.start(env={"FAKE_MODE": "crash_gateway"})
+        self.run_cmd("watch", "t1", "--timeout", "5")
+        self.assertTrue(self.gateway_marker().exists())
+        result = self.run_cmd("stop", "t1", "--wait", "5")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertFalse(self.gateway_marker().exists())
+
+    def test_stop_never_claims_success_when_the_gateway_keeps_running(self):
+        self.install()
+        self.start(env={"FAKE_MODE": "gateway"})
+        self.wait_for_event("tool_use")
+        result = self.run_cmd("stop", "t1", "--wait", "1", env={"FAKE_HELPER": "stuck"})
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertNotIn(": stopped", result.stdout)
+        self.assertIn("still running", result.stdout)
+
+    def test_stop_with_the_client_gone_still_reports_a_running_gateway(self):
+        self.install()
+        self.start(env={"FAKE_MODE": "crash_gateway"})
+        self.run_cmd("watch", "t1", "--timeout", "5")
+        result = self.run_cmd("stop", "t1", "--wait", "1", env={"FAKE_HELPER": "stuck"})
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn("still running", result.stdout)
+
+    def test_stop_says_when_it_cannot_confirm(self):
+        self.install()
+        self.start(env={"FAKE_MODE": "hang"})
+        self.wait_for_event("tool_use")
+        result = self.run_cmd("stop", "t1", "--wait", "3", env={"FAKE_HELPER": "broken"})
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertNotIn(": stopped", result.stdout)
+        self.assertIn("could not confirm", result.stdout)
+
+    def test_a_new_turn_refuses_while_the_session_runs_at_the_gateway(self):
+        self.install()
+        self.start(env={"FAKE_MODE": "crash_gateway"})
+        self.run_cmd("watch", "t1", "--timeout", "5")
+        self.session_row("receiving stream response")
+        for command in (self.run_cmd("send", "t1", "--brief", str(self.brief)), self.start("t2")):
+            self.assertNotEqual(command.returncode, 0, command.stdout)
+            self.assertIn("t1", command.stderr)
+            self.assertIn("running", command.stderr)
+        self.assertEqual(len(self.calls()), 1)
+
+    def test_status_reports_a_detached_session_and_its_real_usage(self):
+        self.install()
+        self.start(env={"FAKE_MODE": "crash_gateway"})
+        self.run_cmd("watch", "t1", "--timeout", "5")
+        self.session_row("receiving stream response")
+        status = json.loads(self.run_cmd("status", "t1").stdout)
+        self.assertEqual(status["state"], "detached")
+        self.assertEqual(status["session"]["api_calls"], 7)
+        self.assertEqual(status["session"]["cache_read_tokens"], 900)
+        self.assertGreaterEqual(status["session"]["last_activity_age_s"], 12)
+
+    def test_status_of_a_running_turn_gives_progress(self):
+        self.install()
+        self.start(env={"FAKE_MODE": "writes"})
+        self.wait_for_event("src/b.h")
+        status = json.loads(self.run_cmd("status", "t1").stdout)
+        self.assertGreaterEqual(status["elapsed_s"], 0)
+        self.assertGreaterEqual(status["last_event_age_s"], 0)
+        self.assertEqual(status["turns"][-1]["tools"], {"terminal": 1, "write_file": 1, "patch": 1})
+
+    def test_send_keeps_the_sessions_turn_limit_unless_told_otherwise(self):
+        self.install()
+        self.run_cmd("start", "t1", "--brief", str(self.brief), "--cwd", str(self.project), "--max-turns", "120")
+        self.wait_finished()
+        self.assertEqual(self.run_cmd("send", "t1", "--brief", str(self.brief)).returncode, 0)
+        self.wait_finished()
+        first, second = self.calls()
+        self.assertEqual(first[first.index("--max-turns") + 1], "120")
+        self.assertNotIn("--max-turns", second)
+        self.assertEqual(self.run_cmd("send", "t1", "--brief", str(self.brief), "--max-turns", "9").returncode, 0)
+        self.wait_finished()
+        third = self.calls()[2]
+        self.assertEqual(third[third.index("--max-turns") + 1], "9")
+
+    def test_start_has_a_default_turn_limit(self):
+        self.install()
+        self.start()
+        self.wait_finished()
+        args = self.calls()[0]
+        self.assertEqual(args[args.index("--max-turns") + 1], "80")
+
+    def test_report_prints_the_whole_final_text(self):
+        self.install()
+        self.start(env={"FAKE_MODE": "long_report"})
+        self.assertNotIn("END-OF-REPORT", self.wait_finished().stdout)
+        result = self.run_cmd("report", "t1")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("END-OF-REPORT", result.stdout)
+
+    def test_report_refuses_before_a_result_exists(self):
+        self.install()
+        self.start(env={"FAKE_MODE": "hang"})
+        result = self.run_cmd("report", "t1")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("no result", result.stderr)
+
+    def git(self, *args):
+        return subprocess.run(["git", "-C", str(self.project), "-c", "user.name=t", "-c", "user.email=t@t", *args],
+                              check=True, capture_output=True, text=True).stdout.strip()
+
+    def snapshot_project(self):
+        self.git("init", "-q")
+        (self.project / ".gitignore").write_text("*.ignored\n.hermes-delegate*\n")
+        (self.project / "keep.txt").write_text("keep\n")
+        (self.project / "change.txt").write_text("old\n")
+        (self.project / "gone.txt").write_text("gone\n")
+        self.git("add", "keep.txt", "change.txt", "gone.txt", ".gitignore")
+        self.git("commit", "-q", "-m", "base")
+        return self.git("rev-parse", "HEAD")
+
+    def test_snapshot_copies_an_uncommitted_delivery(self):
+        base = self.snapshot_project()
+        self.install()
+        self.start()
+        self.wait_finished()
+        (self.project / "change.txt").write_text("new\n")
+        (self.project / "gone.txt").unlink()
+        (self.project / "sub").mkdir()
+        (self.project / "sub/added.bin").write_bytes(b"\x00\x01")
+        (self.project / "junk.ignored").write_text("no\n")
+        dest = self.root / "copy"
+        result = self.run_cmd("snapshot", "t1", "--base", "HEAD", "--dest", str(dest))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual((dest / "change.txt").read_text(), "new\n")
+        self.assertEqual((dest / "keep.txt").read_text(), "keep\n")
+        self.assertEqual((dest / "sub/added.bin").read_bytes(), b"\x00\x01")
+        self.assertFalse((dest / "gone.txt").exists())
+        self.assertFalse((dest / "junk.ignored").exists())
+        summary = json.loads(result.stdout)
+        self.assertEqual(summary["base"], base)
+        self.assertEqual(summary["files"], 3)
+        manifest = json.loads(Path(summary["manifest"]).read_text())
+        by_path = {entry["path"]: entry["sha256"] for entry in manifest["files"]}
+        self.assertEqual(set(by_path), {"change.txt", "gone.txt", "sub/added.bin"})
+        self.assertIsNone(by_path["gone.txt"])
+        self.assertEqual(manifest["fingerprint"], summary["fingerprint"])
+
+    def test_snapshot_fingerprint_changes_with_the_delivery(self):
+        self.snapshot_project()
+        self.install()
+        self.start()
+        self.wait_finished()
+        (self.project / "change.txt").write_text("one\n")
+        first = json.loads(self.run_cmd("snapshot", "t1", "--base", "HEAD").stdout)["fingerprint"]
+        (self.project / "change.txt").write_text("two\n")
+        second = json.loads(self.run_cmd("snapshot", "t1", "--base", "HEAD").stdout)["fingerprint"]
+        self.assertNotEqual(first, second)
+
+    def test_snapshot_refuses_while_the_turn_is_live(self):
+        self.snapshot_project()
+        self.install()
+        self.start(env={"FAKE_MODE": "hang"})
+        result = self.run_cmd("snapshot", "t1", "--base", "HEAD")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("running", result.stderr)
+
+    def test_snapshot_refuses_while_the_session_runs_at_the_gateway(self):
+        self.snapshot_project()
+        self.install()
+        self.start(env={"FAKE_MODE": "crash_gateway"})
+        self.run_cmd("watch", "t1", "--timeout", "5")
+        self.session_row("receiving stream response")
+        result = self.run_cmd("snapshot", "t1", "--base", "HEAD")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("running", result.stderr)
+
+    def other_session(self, description="tool: terminal", session="other-session"):
+        self.session_row(description, session=session)
+
+    def test_start_refuses_while_another_hermes_session_works(self):
+        self.install()
+        self.other_session()
+        self.gateway_marker().touch()
+        result = self.start()
+        self.assertNotEqual(result.returncode, 0, result.stdout)
+        self.assertIn("other-session", result.stderr)
+        self.assertFalse(self.args.exists())
+
+    def test_a_stale_activity_row_does_not_block_a_turn(self):
+        self.install()
+        self.other_session()
+        self.assertEqual(self.start().returncode, 0)
+        self.wait_finished()
+
+    def test_an_unconfirmed_session_blocks_a_turn(self):
+        self.install()
+        self.other_session()
+        result = self.start(env={"FAKE_HELPER": "broken"})
+        self.assertNotEqual(result.returncode, 0, result.stdout)
+        self.assertIn("other-session", result.stderr)
+
+    def test_simultaneous_starts_launch_only_one_turn(self):
+        self.install()
+        starts = [subprocess.Popen([sys.executable, str(DELEGATE), "start", f"r{n}", "--brief", str(self.brief),
+                                    "--cwd", str(self.project)], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                   text=True, env={**self.env, "FAKE_MODE": "hang"}) for n in range(6)]
+        outcomes = [(start.communicate(timeout=20), start.returncode) for start in starts]
+        self.assertEqual(sum(code == 0 for _, code in outcomes), 1, outcomes)
+        self.assertEqual(len(list((self.root / "state").glob("*/state.json"))), 1)
+
+    def test_sessions_lists_what_is_alive(self):
+        self.install()
+        self.start(env={"FAKE_MODE": "hang"})
+        self.wait_for_event("tool_use")
+        pid = json.loads((self.root / "state/t1/state.json").read_text())["pid"]
+        watcher = subprocess.Popen([sys.executable, str(DELEGATE), "watch", "t1"], stdout=subprocess.DEVNULL, env=self.env)
+        self.addCleanup(watcher.wait)
+        self.addCleanup(watcher.kill)
+        time.sleep(0.3)
+        self.other_session()
+        alive = json.loads(self.run_cmd("sessions").stdout)
+        self.assertEqual([client["pid"] for client in alive["clients"]], [pid])
+        self.assertEqual([entry["pid"] for entry in alive["watchers"]], [watcher.pid])
+        self.assertEqual([session["id"] for session in alive["active_sessions"]], ["other-session"])
+
+    def test_install_guard_upgrades_an_older_block(self):
+        self.install()
+        current = self.config.read_text()
+        self.config.write_text(current.replace("|delegate_task", ""))
+        self.assertNotEqual(self.config.read_text(), current)
+        refused = self.start()
+        self.assertNotEqual(refused.returncode, 0)
+        self.assertIn("install-guard", refused.stderr)
+        self.install()
+        self.assertEqual(self.config.read_text(), current)
+        self.assertEqual(self.start().returncode, 0)
+
     def test_label_cannot_escape_state_dir(self):
         self.install()
         self.assertNotEqual(self.start("../evil").returncode, 0)
+
+
+class SandboxTest(unittest.TestCase):
+    """Inside a sandbox with its own PID namespace, a turn dies with the command and host processes are hidden."""
+
+    def run_with_pid1(self, command_line, *args):
+        sys.path.insert(0, str(HERE))
+        self.addCleanup(sys.path.remove, str(HERE))
+        import delegate
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(os.environ, {"HERMES_DELEGATE_STATE": tmp}):
+            pid1 = Path(tmp) / "cmdline"
+            pid1.write_bytes(command_line)
+            error = io.StringIO()
+            with mock.patch.object(delegate, "PID1_COMMAND", pid1), contextlib.redirect_stderr(error), \
+                    contextlib.redirect_stdout(io.StringIO()):
+                return delegate.main(list(args)), error.getvalue()
+
+    def test_every_command_refuses_inside_codex_sandbox(self):
+        for command_line in (b"codex-linux-sandbox\0--sandbox-policy-cwd\0/x\0", b"/usr/bin/bwrap\0--as-pid-1\0"):
+            code, error = self.run_with_pid1(command_line, "status")
+            self.assertEqual(code, 2)
+            self.assertIn("outside", error)
+            self.assertIn("require_escalated", error)
+
+    def test_commands_run_on_the_host(self):
+        for command_line in (b"/sbin/init\0", b"/lib/systemd/systemd\0", b"python3\0app.py\0"):
+            self.assertEqual(self.run_with_pid1(command_line, "status")[0], 0)
 
 
 class GuardTest(unittest.TestCase):
@@ -452,6 +911,26 @@ class GuardTest(unittest.TestCase):
         self.assert_blocked("read_file", {"path": "config/prod.env"})
         self.assert_blocked("read_file", {"path": "data/.config.yaml"})
         self.assert_allowed("read_file", {"path": "app/settings"})
+
+    def test_a_delegated_turn_cannot_start_subagents(self):
+        self.assert_blocked("delegate_task", {"goal": "do part of it"})
+        self.assert_allowed("delegate_task", {"goal": "x"}, cwd=self.elsewhere)
+
+    def test_an_interactive_session_keeps_its_subagents(self):
+        home = Path(self.tmp.name) / "home"
+        home.mkdir()
+        db = sqlite3.connect(home / "state.db")
+        db.execute("create table sessions (id text, cwd text, parent_session_id text, source text)")
+        db.executemany("insert into sessions values (?, ?, null, ?)",
+                       [("mine", str(self.project), "local"), ("run", str(self.project), "tool")])
+        db.commit()
+        db.close()
+        def decide(session):
+            payload = {"tool_name": "delegate_task", "tool_input": {"goal": "x"}, "session_id": session, "cwd": str(self.project)}
+            return subprocess.run([sys.executable, str(GUARD)], input=json.dumps(payload), capture_output=True, text=True,
+                                  timeout=10, env={**os.environ, "HERMES_HOME": str(home)}).stdout
+        self.assertEqual(decide("mine"), "")
+        self.assertIn("subagents", decide("run"))
 
     def test_execute_code_is_checked_by_text(self):
         self.assert_blocked("execute_code", {"code": "subprocess.run(['git', 'push'])"})

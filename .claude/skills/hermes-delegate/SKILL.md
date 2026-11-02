@@ -1,11 +1,11 @@
 ---
 name: hermes-delegate
-description: Use when coding work should be handed to the Hermes agent while Claude supervises.
+description: Use when coding work should be handed to the Hermes agent while an orchestrating agent, such as Claude Code or Codex, supervises.
 ---
 
 # Delegate coding to Hermes
 
-Hermes writes the code. The supervisor writes briefs, verifies the results and sends corrections. When this skill is active, the supervisor edits no code in the delegated scope, including small fixes: a defect becomes a correction.
+Hermes writes the code. The orchestrating agent, called the supervisor below, writes briefs, verifies the results and sends corrections. When this skill is active, the supervisor edits no code in the delegated scope, including small fixes: a defect becomes a correction.
 
 `scripts/delegate.py` is in this skill's folder. Run it with `python3`; `--help` lists every option.
 
@@ -45,9 +45,8 @@ Local values override shared ones, and guard rules from both apply. Hermes owns 
 
 Then:
 
-1. Confirm no interactive Hermes session is working in the same project. `delegate.py` only knows its own turns, and two writers corrupt each other's work. If one is active, ask the user to close it.
-2. Run `install-guard` once. It adds a hook to Hermes' config. In any project with one of these files, the hook blocks your rules plus `git push`, `--no-verify`, `git reset --hard`, `git clean -f` and `git add -A`. Other projects are unaffected. Undo with `uninstall-guard`.
-3. In a throwaway turn, ask the agent to run `git push --dry-run no-such-remote` and look for `Blocked by project guard`. Repeat after updating Hermes.
+1. Run `install-guard` once, and again when `start` asks for it after an update. It adds a hook to Hermes' config. In any project with one of these files, the hook blocks your rules plus `git push`, `--no-verify`, `git reset --hard`, `git clean -f` and `git add -A`. Other projects are unaffected. Undo with `uninstall-guard`.
+2. In a throwaway turn, ask the agent to run `git push --dry-run no-such-remote` and look for `Blocked by project guard`. Repeat after updating Hermes.
 
 The guard stops honest mistakes. It is not a sandbox.
 
@@ -55,12 +54,23 @@ The guard stops honest mistakes. It is not a sandbox.
 
 1. **Write one brief per task**, in a file. Use a new label, and so a new session, for each task.
 2. **Start it:** `python3 scripts/delegate.py start <label> --brief <file> --cwd <project>`.
-3. **Follow it:** run `python3 scripts/delegate.py watch <label>` under the Monitor tool with `timeout_ms: 1800000`. The turn keeps running if the watcher expires; start `watch` again and it continues where it stopped.
+3. **Follow it:** run `python3 scripts/delegate.py watch <label>` so it does not block your session. It returns by `--timeout` (exit 3 if the turn still runs), and the turn keeps running after it returns; run `watch` again and it continues where it stopped. Waiting costs tokens, so follow the guide for your orchestrator:
+   - **Codex:** read `orchestrators/codex.md` before the first turn.
+   - **Claude Code:** use the Monitor tool with `timeout_ms: 1800000`.
 4. **Verify** when `RESULT` appears, using the gate below. The agent's report is a claim to check.
 5. **Correct:** `python3 scripts/delegate.py send <label> --brief <file>`, then go back to step 3. A correction needs no required sections.
 6. **Close** when the gate passes: record the numbers from `status <label>` and take the next task.
 
-To cut a wrong turn short, run `stop <label>`, then `send` the correction. The interruption lands at the next safe point.
+To cut a wrong turn short, run `stop <label>`, then `send` the correction. The interruption lands at the next safe point, and `stop` prints `stopped` only once the gateway confirms it.
+
+## One Hermes session at a time
+
+Killing the `hermes chat` client only detaches it: the session keeps working at the gateway. So:
+
+- `start` and `send` refuse while any Hermes session is at work, delegated or not, and simultaneous calls launch only one.
+- `status` shows a run the client left behind as `detached`. Run `stop <label>` on it; killing processes by hand can take the whole gateway down.
+- `sessions` lists the clients, watchers and sessions alive right now. Run it when something seems stuck, and before another session changes the model or Hermes' config.
+- A delegated turn cannot start subagents: the guard blocks `delegate_task` in sessions `delegate.py` started.
 
 ## Brief
 
@@ -82,13 +92,15 @@ What it must not do, beyond what the guard blocks.
 Commit SHA, the commands it ran with their real output, deviations, open doubts.
 ```
 
+When an order matters, such as seeing a test fail before production code exists, end the turn there and `send` the next step. An agent can drift from an order written in a brief, and a turn that ends reaches you without polling.
+
 Spend your effort on the edge cases: they are what an implementing agent is most likely to miss. Give facts you already found, such as file and line, so the agent does not spend turns rediscovering them.
 
 Keep briefs to the task. Evaluations of the agent and notes for the user stay out of them.
 
 ## Verification gate
 
-Check all of these in a copy made with `git archive <sha> | tar -x -C <scratch dir>`. Do not run them in the agent's working tree while a turn is live.
+Check all of these in a copy made with `git archive <sha> | tar -x -C <scratch dir>`, or with `snapshot <label> --base <rev>` for a delivery with no commit. Do not run them in the agent's working tree while a turn is live.
 
 1. `git log` and `git diff --stat <base>..<sha>` show only the files the brief allowed.
 2. The brief's commands pass, run by you.
@@ -111,3 +123,4 @@ Check all of these in a copy made with `git archive <sha> | tar -x -C <scratch d
 | Running `hermes -z` by hand | Dangerous commands are approved automatically |
 | One session for several tasks | Context compaction costs minutes and many tokens |
 | Treating `SILENT` as a hang | Long thinking is silent too; check where the model runs before acting |
+| Trusting `RESULT exit=130` as a stop | It only says the client ended; check `status` for `detached` |

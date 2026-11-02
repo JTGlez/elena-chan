@@ -179,6 +179,20 @@ def session_cwd(session_id):
     return None
 
 
+def is_delegated(session_id):
+    """Sessions delegate.py starts have source `tool`. Only one the store shows as another kind may use subagents."""
+    store = Path(os.environ.get("HERMES_HOME") or Path.home() / ".hermes") / "state.db"
+    try:
+        db = sqlite3.connect(f"{store.as_uri()}?mode=ro", uri=True, timeout=5)
+        try:
+            row = db.execute("select source from sessions where id=?", (session_id,)).fetchone()
+        finally:
+            db.close()
+    except sqlite3.Error:
+        return True
+    return row is None or row[0] == "tool"
+
+
 def find_config(payload):
     """The first project config above the working directory or any absolute path the call names."""
     cwd = Path(str(payload.get("cwd") or "/"))
@@ -219,6 +233,8 @@ def main():
         print(f"guard_hook: cannot evaluate this call: {error}", file=sys.stderr)
         return 2
     reason = guard.decide(tool, payload.get("tool_input"))
+    if tool == "delegate_task" and is_delegated(payload.get("session_id")):
+        reason = "a delegated turn works alone, with no subagents"
     if reason:
         print(json.dumps({"action": "block", "message": f"Blocked by project guard: {reason}. {HINT}"}))
     return 0
