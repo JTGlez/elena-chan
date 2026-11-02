@@ -16,7 +16,7 @@ IDF_ENV := source $(CURDIR)/tools/idf-env.sh >/dev/null
 .PHONY: help check-system setup setup-submodules setup-server setup-firmware \
 	test test-server test-firmware test-tools \
 	check-locks check-server-lock check-firmware-lock update-server-lock \
-	firmware firmware-image firmware-index server-config server-run
+	firmware firmware-image firmware-index server-config server-run screen-viewer
 
 help: ## List targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-18s %s\n", $$1, $$2}'
@@ -81,3 +81,6 @@ server-config: ## Generate the gitignored server config; PROFILE=local (default)
 
 server-run: ## Start the server with the generated config; local services run separately
 	cd $(SERVER_DIR) && $(SERVER_PY) app.py
+
+screen-viewer: ## Watch Elena's screen; set ROBOT, optional ARGS (see docs/screen-stream.md)
+	python3 tools/screen_viewer.py view --robot "$(ROBOT)" $(ARGS)
