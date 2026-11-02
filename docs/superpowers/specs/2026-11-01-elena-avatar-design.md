@@ -9,7 +9,7 @@ escritura al robot ni constituye evidencia de funcionamiento en hardware.
 
 Sustituir las caritas de Xiaozhi por Elena y hacer visible cuándo escucha,
 espera una respuesta y habla. El retrato debe ocupar el lienzo completo de
-320 × 240, conservando el encuadre del kit v2.1-fit.
+320 × 240, conservando el encuadre del kit v3-platinum, igual al de v2.1-fit.
 
 El usuario eligió la opción 2: un controlador de avatar sobre el motor gráfico
 existente. También indicó que no le interesan los subtítulos. Por tanto, esta
@@ -76,16 +76,21 @@ El enum actual de estados del dispositivo no tiene un estado `thinking`.
 La espera será un estado del controlador visual, sin alterar la máquina de
 estados de audio/conexión. No se inferirá desde textos traducidos de la interfaz.
 
-Origen del kit:
-`elena-chan-avatar-kit-v2.1-fit/elena-chan-avatar-kit-v2.1/`.
-Actualmente esa carpeta no está seguida por Git. La integración debe incorporar
-los recursos necesarios al fork para que una clonación limpia pueda compilar;
-no puede depender de que esa carpeta siga presente en la máquina.
+Origen del kit: `elena-chan-avatar-kit-v3-platinum/`. Sustituye a v2.1-fit, que
+queda obsoleto: cambia el color del cabello y conserva poses, encuadre y nombres.
+Actualmente esa carpeta no está seguida por Git. El kit es material de origen, no
+un módulo: cada pieza entra al fork solo cuando una entrega la necesita, y el kit
+completo no se versiona. La integración debe incorporar los recursos necesarios
+al fork para que una clonación limpia pueda compilar; no puede depender de que
+esa carpeta siga presente en la máquina.
 
-Comprobaciones realizadas durante el análisis:
+Comprobaciones realizadas durante el análisis. El tamaño total y los cuadros por
+GIF se midieron en v3; el resto se midió en v2.1-fit y debe repetirse con v3 al
+integrar los recursos:
 
-- 12 GIFs, 34 cuadros por vuelta, 320 × 240, opacos, bucle infinito.
-- Tamaño total: 865.886 bytes, aproximadamente 845,6 KiB; coincide con el manifiesto.
+- 12 GIFs, 34 cuadros en total por vuelta (2 o 3 por archivo), 320 × 240, opacos,
+  bucle infinito.
+- Tamaño total: 795.710 bytes, aproximadamente 777,1 KiB; coincide con el manifiesto.
 - Decodificador C del firmware ejecutado en el ordenador con adaptadores de LVGL:
   68 cuadros por configuración, dos vueltas de cada GIF, con caché LZW activada
   y desactivada. Ambas configuraciones coincidieron píxel a píxel con Pillow.
