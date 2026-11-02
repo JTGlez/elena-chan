@@ -2,7 +2,7 @@
 
 <img src="assets/elena-readme.png" alt="Elena-chan" width="300">
 
-<sub>Character art generated with AI (ChatGPT).</sub>
+<sub>Character art generated with AI (ChatGPT), released under the MIT License.</sub>
 
 # Elena-chan
 
