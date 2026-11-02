@@ -92,25 +92,28 @@ def run(*command: str) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--purpose", default="", help="Short purpose; defaults to the firmware branch")
+    parser.add_argument("--language", default="es-ES", help="Firmware language locale")
+    parser.add_argument("--xiaozhi-cloud", action="store_true", help="Keep the default Xiaozhi cloud server")
     args = parser.parse_args()
 
     if "IDF_PATH" not in os.environ:
         raise SystemExit("ESP-IDF is not active. Use `make firmware-image`.")
-    url = read_ota_url(Path(os.environ.get("FIRMWARE_ENV_FILE", ENV_FILE)))
+    url = None if args.xiaozhi_cloud else read_ota_url(Path(os.environ.get("FIRMWARE_ENV_FILE", ENV_FILE)))
 
     branch = git("branch", "--show-current")
     purpose = args.purpose or branch or "build"
     dirty = bool(git("status", "--porcelain"))
     commit = git("rev-parse", "--short=7", "HEAD")
 
-    run(sys.executable, "scripts/build.py", BOARD, "--name", VARIANT)
+    run(sys.executable, "scripts/build.py", BOARD, "--name", VARIANT, "--language", args.language)
     sdkconfig = FIRMWARE / "sdkconfig"
-    set_ota_url(sdkconfig, url)
-    run("idf.py", "build")
-
+    if url:
+        set_ota_url(sdkconfig, url)
+        run("idf.py", "build")
     build = FIRMWARE / "build"
-    if url.encode() not in (build / "xiaozhi.bin").read_bytes():
+    if url and url.encode() not in (build / "xiaozhi.bin").read_bytes():
         raise SystemExit("The built app does not contain OTA_URL.")
+    match = re.search(r'^CONFIG_OTA_URL="(.*)"$', sdkconfig.read_text(encoding="utf-8"), re.MULTILINE)
 
     created = datetime.now(timezone.utc).astimezone()
     destination = DIST / image_name(created, purpose, commit, dirty)
@@ -123,7 +126,8 @@ def main() -> int:
         "firmware_commit": git("rev-parse", "HEAD"),
         "firmware_dirty": dirty,
         "repository_commit": git("rev-parse", "HEAD", cwd=ROOT),
-        "ota_url": url,
+        "language": args.language,
+        "ota_url": match.group(1) if match else "",
     })
     print(f"Image: {destination.relative_to(ROOT)}")
     return 0
