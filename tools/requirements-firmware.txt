@@ -1,0 +1,4 @@
+# Firmware and tools development: host tests, and the art scripts that are run by hand.
+# The firmware build itself uses ESP-IDF's Python and never needs these.
+# scripts/tests/fixtures/avatar_gif/v3-frames.json records this Pillow as its oracle.
+pillow==12.2.0

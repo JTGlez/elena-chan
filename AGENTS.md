@@ -25,6 +25,7 @@ elena-chan/
 ├── .github/          # CI workflows
 ├── .claude/skills/   # Firmware build and flash, local models, delegation to Hermes
 ├── vendor/           # Read-only reference code and graphs (gitignored)
+├── .venv-firmware/   # Python for firmware host tests and tools (gitignored)
 ├── .localworker/     # Local model workers (gitignored)
 └── .localaudio/      # Local voice lab (gitignored)
 ```
@@ -68,7 +69,7 @@ Hermes has no fork. Install it separately and record the tested version in `docs
 
 ```sh
 make check-system   # Reports missing apt packages; installs nothing
-make setup          # Submodules, server environment, ESP-IDF v6.1
+make setup          # Submodules, server and firmware environments, ESP-IDF v6.1
 make test           # All test suites
 make check-locks    # Fails if pinned versions drifted; run after a firmware build
 make firmware       # Builds for CoreS3; never writes to the robot
@@ -83,8 +84,11 @@ Each Python environment stays separate:
 | Environment | Location | Python | Used for |
 |---|---|---|---|
 | Server | `server/main/xiaozhi-server/.venv` | 3.10 | Server code and tests, with CPU torch |
-| ESP-IDF | Managed by ESP-IDF under `~/.espressif` | 3.12 | Firmware builds and script tests |
-| System | `python3` | Any current version | `tools/` and skills, standard library only |
+| ESP-IDF | Managed by ESP-IDF under `~/.espressif` | 3.12 | Firmware builds only |
+| Firmware | `.venv-firmware` | 3.12 | Firmware host tests, `tools/` and skill tests, `make` targets that run `tools/`, and the art scripts that need Pillow |
+| System | `python3` | 3.11 or later | Skills an agent runs directly, standard library only |
+
+Never rely on whichever `python3` is on `PATH` for tests or development: a server environment left active there once stopped `make test`. Targets that need `.venv-firmware` create or update it by themselves, and CI uses the same targets. To run one test by hand, call `.venv-firmware/bin/python` directly. What the firmware build runs stays standard library only, because it uses ESP-IDF's Python.
 
 Activate ESP-IDF in a shell with `source tools/idf-env.sh`. Other ESP-IDF versions on the machine are unaffected.
 
@@ -156,6 +160,7 @@ Exact versions are recorded here. A build must never change them silently.
 |---|---|---|
 | ESP components | `firmware/dependencies.lock`, tracked with `git add -f` because upstream ignores it | Delete or edit the lock, then build |
 | Server Python packages | `server/main/xiaozhi-server/requirements.lock` | Edit `requirements*.txt`, then `make update-server-lock`; for one package, `make update-server-lock UPGRADE=<name>` |
+| Firmware environment | `tools/requirements-firmware.lock` | Edit `tools/requirements-firmware.txt`, then `make update-firmware-venv-lock` |
 | ESP-IDF | `IDF_COMMIT` in `tools/setup-idf.sh` and the image digest in `.github/workflows/ci.yml` | Change both together |
 | `uv` in CI | `.github/workflows/ci.yml` | Change the version |
 | Xiaozhi and server | Submodule pointers | See [Pull upstream changes](#pull-upstream-changes) |

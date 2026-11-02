@@ -1,3 +1,6 @@
+# Python environment for firmware host tests and tools; see AGENTS.md
+/.venv-firmware/
+
 # Third-party firmware clones for study (not tracked)
 /vendor/
 
