@@ -26,13 +26,17 @@ jobs:
           submodules: true
       - run: sudo apt-get update && sudo apt-get install -y ffmpeg libopus0
       - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.12.1"
+      - run: make check-server-lock
       - run: make setup-server
       - run: make test-server
 
   firmware:
     runs-on: ubuntu-24.04
     container:
-      image: espressif/idf:v6.1
+      # v6.1; see "Update dependencies" in AGENTS.md
+      image: espressif/idf@sha256:81893c71bb5e570088901f21def8684c25cd2a9020281bd01b843a7655edb18c
     defaults:
       run:
         shell: bash
@@ -53,3 +57,4 @@ jobs:
           git config --global --add safe.directory '*'
           . "$IDF_PATH/export.sh"
           python scripts/build.py m5stack/core-s3 --name m5stack-core-s3
+          git diff --exit-code -- dependencies.lock

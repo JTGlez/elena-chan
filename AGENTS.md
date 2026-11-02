@@ -39,7 +39,7 @@ Create `brain/` and `docs/` when they have content.
 
 Hermes has no fork. Install it separately and record the tested version in `docs/`.
 
-**Pinned bases:** Xiaozhi `4632dc5`, `xiaozhi-esp32-server` `4745186`, ESP-IDF v6.1.
+**Pinned bases:** Xiaozhi `4632dc5`, `xiaozhi-esp32-server` `4745186`, ESP-IDF v6.1. See [Update dependencies](#update-dependencies).
 
 ## Rules for all work
 
@@ -65,6 +65,7 @@ Hermes has no fork. Install it separately and record the tested version in `docs
 make check-system   # Reports missing apt packages; installs nothing
 make setup          # Submodules, server environment, ESP-IDF v6.1
 make test           # All test suites
+make check-locks    # Fails if pinned versions drifted; run after a firmware build
 make firmware       # Builds for CoreS3; never writes to the robot
 make firmware-image PURPOSE="..."  # Stores an image in dist/firmware/
 make server-config  # Generates data/.config.yaml for local services
@@ -123,6 +124,25 @@ Never publish a pointer to a commit that is missing from its fork. `push.recurse
 - **Server:** select STT, LLM, and TTS through configuration when possible. Build an image from the fork; do not copy files into a running container.
 - **Commits:** keep them small and explain why. After `git fetch upstream`, `git diff upstream/main...elena` must read as the full list of our changes. Use three dots.
 
+### Update dependencies
+
+Exact versions are recorded here. A build must never change them silently.
+
+| Dependency | Pinned in | Update with |
+|---|---|---|
+| ESP components | `firmware/dependencies.lock`, tracked with `git add -f` because upstream ignores it | Delete or edit the lock, then build |
+| Server Python packages | `server/main/xiaozhi-server/requirements.lock` | Edit `requirements*.txt`, then `make update-server-lock`; for one package, `make update-server-lock UPGRADE=<name>` |
+| ESP-IDF | `IDF_COMMIT` in `tools/setup-idf.sh` and the image digest in `.github/workflows/ci.yml` | Change both together |
+| `uv` in CI | `.github/workflows/ci.yml` | Change the version |
+| Xiaozhi and server | Submodule pointers | See [Pull upstream changes](#pull-upstream-changes) |
+
+1. Update only for a concrete reason, and one dependency group at a time.
+2. Run `make check-locks`, `make test`, and `make firmware`.
+3. If firmware behavior can change, test on the robot before merging.
+4. Commit the lock with the change, including the submodule pointer, and update `docs/tested-versions.md`.
+
+`make check-locks` fails when a lock no longer matches its inputs. CI also fails if a firmware build changes `dependencies.lock`.
+
 ### Pull upstream changes
 
 Update only for a concrete reason, such as a needed fix or feature. Do not track upstream continuously.
@@ -130,7 +150,8 @@ Update only for a concrete reason, such as a needed fix or feature. Do not track
 1. In the submodule, run `git fetch upstream --tags`.
 2. Create a test branch from `elena` and `git merge` a specific tag or commit. Do not rebase, because older pointers must stay valid.
 3. Build and test on the robot.
-4. Merge into `elena`, push, then update the pointer and the tested combination in `docs/`.
+4. Resolve `dependencies.lock` and `requirements.lock` for the merged manifests, then follow [Update dependencies](#update-dependencies).
+5. Merge into `elena`, push, then update the pointer and the tested combination in `docs/`.
 
 Update firmware and server separately when possible, so a failure has one likely cause.
 

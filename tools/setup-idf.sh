@@ -3,6 +3,7 @@
 set -euo pipefail
 
 IDF_VERSION=v6.1
+IDF_COMMIT=fff9895c82d744c7237be8847347bdd1b07c6643
 IDF_DIR="${ESP_IDF_DIR:-$HOME/esp/esp-idf-v6.1}"
 SHIM_DIR="$HOME/esp/bin"
 
@@ -17,9 +18,9 @@ if [ ! -d "$IDF_DIR/.git" ]; then
         https://github.com/espressif/esp-idf.git "$IDF_DIR"
 fi
 
-actual="$(git -C "$IDF_DIR" describe --tags)"
-if [ "$actual" != "$IDF_VERSION" ]; then
-    echo "error: $IDF_DIR is at $actual, expected $IDF_VERSION" >&2
+actual="$(git -C "$IDF_DIR" rev-parse HEAD)"
+if [ "$actual" != "$IDF_COMMIT" ]; then
+    echo "error: $IDF_DIR is at $actual, expected $IDF_VERSION ($IDF_COMMIT)" >&2
     exit 1
 fi
 

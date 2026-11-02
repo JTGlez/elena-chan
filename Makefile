@@ -9,10 +9,13 @@ BOARD_VARIANT := m5stack-core-s3
 LANGUAGE := es-ES
 SERVER_DIR := server/main/xiaozhi-server
 SERVER_PY := $(CURDIR)/$(SERVER_DIR)/.venv/bin/python
+UV_COMPILE := uv pip compile requirements.txt requirements-dev.txt --python-version 3.10 \
+	--torch-backend cpu --no-header --quiet
 IDF_ENV := source $(CURDIR)/tools/idf-env.sh >/dev/null
 
 .PHONY: help check-system setup setup-submodules setup-server setup-firmware \
 	test test-server test-firmware test-tools \
+	check-locks check-server-lock check-firmware-lock update-server-lock \
 	firmware firmware-image firmware-index server-config server-run
 
 help: ## List targets
@@ -28,8 +31,7 @@ setup-submodules: ## Fetch firmware and server at their pinned commits
 
 setup-server: ## Create the server's Python 3.10 environment (CPU torch)
 	cd $(SERVER_DIR) && uv venv --allow-existing --python 3.10 .venv
-	cd $(SERVER_DIR) && uv pip install --python .venv/bin/python --torch-backend=cpu \
-		-r requirements.txt -r requirements-dev.txt
+	cd $(SERVER_DIR) && uv pip sync --python .venv/bin/python --torch-backend=cpu requirements.lock
 	uv pip check --python $(SERVER_PY)
 
 setup-firmware: ## Install ESP-IDF v6.1 and its Python 3.12 environment
@@ -50,6 +52,20 @@ test-tools: ## Run this repository's tool and skill tests
 	@if [ -f .claude/skills/local-model/scripts/test_model_gate.py ]; then \
 		cd .claude/skills/local-model/scripts && python3 -m unittest test_model_gate; \
 	fi
+
+check-locks: check-server-lock check-firmware-lock ## Fail if a lock file no longer matches its inputs
+
+check-server-lock: ## Fail if the server's lock does not match its requirements
+	@tmp=$$(mktemp) && cp $(SERVER_DIR)/requirements.lock $$tmp && \
+	cd $(SERVER_DIR) && $(UV_COMPILE) -o $$tmp && cmp requirements.lock $$tmp && \
+	rm -f $$tmp && echo "Server lock is current."
+
+check-firmware-lock: ## After a build, fail if component versions changed
+	git -C firmware diff --exit-code -- dependencies.lock
+	@echo "Firmware lock is current."
+
+update-server-lock: ## Refresh the server's lock after editing its requirements
+	cd $(SERVER_DIR) && $(UV_COMPILE) -o requirements.lock $(if $(UPGRADE),--upgrade-package $(UPGRADE))
 
 firmware: ## Build the firmware for the configured board
 	$(IDF_ENV) && cd firmware && python scripts/build.py $(BOARD) --name $(BOARD_VARIANT)

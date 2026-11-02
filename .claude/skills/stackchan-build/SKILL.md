@@ -25,7 +25,7 @@ The image is stored in `dist/firmware/<YYYYMMDD-HHMMSS>-<purpose>-<commit>/`, an
 
 ## What an image contains
 
-- The files named by `flasher_args.json`, plus `sdkconfig`.
+- The files named by `flasher_args.json`, plus `sdkconfig` and `dependencies.lock`.
 - `manifest.json`: purpose, date, board, commits, ESP-IDF version, server URL, and hashes.
 
 `merged-binary.bin` is excluded on purpose, because writing it erases NVS.

@@ -1,12 +1,12 @@
 # Tested versions
 
-Tested on 2026-11-01 under WSL2 with Ubuntu 26.04. Nothing below has been run on the robot.
+Tested on 2026-11-01 under WSL2 with Ubuntu 26.04.
 
 | Component | Version |
 |---|---|
-| ESP-IDF | v6.1, `xtensa-esp-elf` esp-15.2.0_20251204, Python 3.12 |
-| Xiaozhi firmware | `4632dc5`, board `m5stack/core-s3`, variant `m5stack-core-s3` |
-| `xiaozhi-esp32-server` | `4745186` plus `requirements-dev.txt`, Python 3.10 |
+| ESP-IDF | v6.1 (`fff9895`), `xtensa-esp-elf` esp-15.2.0_20251204, Python 3.12 |
+| Xiaozhi firmware | `4632dc5` plus `dependencies.lock`, board `m5stack/core-s3`, variant `m5stack-core-s3` |
+| `xiaozhi-esp32-server` | `4745186` plus `requirements-dev.txt` and `requirements.lock`, Python 3.10 |
 | Hermes | Not integrated yet |
 
 ## Results
@@ -18,8 +18,16 @@ Tested on 2026-11-01 under WSL2 with Ubuntu 26.04. Nothing below has been run on
 | GitHub Actions on `main` | `tools`, `server`, and `firmware` jobs pass |
 | `make server-run` with `config/server.local.yaml.template` | Starts and initializes LLM, VAD, and STT providers |
 
+## On the robot
+
+Image `base-xiaozhi-cloud` at `4632dc5`, in Spanish, using the Xiaozhi cloud server, not `server/`.
+
+- Boots, connects to the cloud, and holds a spoken conversation, as observed by the user.
+- NVS and phy were unchanged after the write.
+- Not checked: camera and touch. This board has no head servo code.
+
 ## Not tested
 
 - A conversation through the local LLM, STT, and TTS services. These services were not running during the startup test.
 - The TTS provider, which the server did not report initializing at startup.
-- The firmware on the robot.
+- The firmware with a local server.

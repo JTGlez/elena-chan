@@ -62,16 +62,19 @@ class StoreImageTests(unittest.TestCase):
             )
             sdkconfig = root / "sdkconfig"
             sdkconfig.write_text("X=1\n", encoding="utf-8")
+            lock = root / "dependencies.lock"
+            lock.write_text("version: 3\n", encoding="utf-8")
             destination = root / "dist" / "image"
 
-            store_image(build, sdkconfig, destination, {"purpose": "test"})
+            store_image(build, sdkconfig, lock, destination, {"purpose": "test"})
 
             self.assertTrue((destination / "bootloader" / "bootloader.bin").is_file())
             self.assertTrue((destination / "flasher_args.json").is_file())
             self.assertFalse((destination / "merged-binary.bin").exists())
             manifest = json.loads((destination / "manifest.json").read_text(encoding="utf-8"))
             self.assertEqual(manifest["purpose"], "test")
-            self.assertEqual(set(manifest["sha256"]), {"bootloader/bootloader.bin", "app.bin"})
+            self.assertEqual(set(manifest["sha256"]), {"bootloader/bootloader.bin", "app.bin", "dependencies.lock"})
+            self.assertTrue((destination / "dependencies.lock").is_file())
 
 
 if __name__ == "__main__":

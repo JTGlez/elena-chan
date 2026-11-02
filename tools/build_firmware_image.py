@@ -63,7 +63,7 @@ def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def store_image(build: Path, sdkconfig: Path, destination: Path, manifest: dict) -> None:
+def store_image(build: Path, sdkconfig: Path, lock: Path, destination: Path, manifest: dict) -> None:
     """Copy only what flasher_args.json names, so merged images stay out."""
     flash_files = json.loads((build / "flasher_args.json").read_text(encoding="utf-8"))["flash_files"]
     partial = destination.with_name(destination.name + ".partial")
@@ -76,6 +76,8 @@ def store_image(build: Path, sdkconfig: Path, destination: Path, manifest: dict)
         hashes[relative] = sha256(target)
     shutil.copy2(build / "flasher_args.json", partial / "flasher_args.json")
     shutil.copy2(sdkconfig, partial / "sdkconfig")
+    shutil.copy2(lock, partial / "dependencies.lock")
+    hashes["dependencies.lock"] = sha256(lock)
     content = {**manifest, "name": destination.name, "flash_files": flash_files, "sha256": hashes}
     (partial / "manifest.json").write_text(json.dumps(content, indent=2) + "\n", encoding="utf-8")
     partial.rename(destination)
@@ -117,7 +119,7 @@ def main() -> int:
 
     created = datetime.now(timezone.utc).astimezone()
     destination = DIST / image_name(created, purpose, commit, dirty)
-    store_image(build, sdkconfig, destination, {
+    store_image(build, sdkconfig, FIRMWARE / "dependencies.lock", destination, {
         "purpose": purpose,
         "created_at": created.isoformat(timespec="seconds"),
         "board": BOARD,
