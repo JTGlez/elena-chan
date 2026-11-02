@@ -12,7 +12,7 @@ IDF_ENV := source $(CURDIR)/tools/idf-env.sh >/dev/null
 
 .PHONY: help check-system setup setup-submodules setup-server setup-firmware \
 	test test-server test-firmware test-tools \
-	firmware firmware-index server-config server-run
+	firmware firmware-image firmware-index server-config server-run
 
 help: ## List targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-18s %s\n", $$1, $$2}'
@@ -52,6 +52,9 @@ test-tools: ## Run this repository's tool and skill tests
 
 firmware: ## Build the firmware for the configured board
 	$(IDF_ENV) && cd firmware && python scripts/build.py $(BOARD) --name $(BOARD_VARIANT)
+
+firmware-image: ## Build an image for stackchan-flash in dist/firmware; set PURPOSE
+	$(IDF_ENV) && python $(CURDIR)/tools/build_firmware_image.py --purpose "$(PURPOSE)"
 
 firmware-index: ## Refresh the compile database that VS Code reads
 	$(IDF_ENV) && cd firmware && idf.py reconfigure

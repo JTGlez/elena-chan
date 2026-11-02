@@ -18,3 +18,9 @@ __pycache__/
 # Editor settings and stray CMake output; they depend on this machine
 /.vscode/
 /build/
+
+# Firmware images ready to flash (see AGENTS.md)
+/dist/
+
+# Local server address for firmware builds
+/config/firmware.local.env

@@ -21,6 +21,7 @@ elena-chan/
 ├── docs/             # Decisions and tested version combinations
 ├── tools/            # Setup scripts and helpers; `make help` lists entry points
 ├── config/           # Templates without secrets
+├── dist/firmware/    # Firmware images ready to flash (gitignored)
 ├── .github/          # CI workflows
 ├── .claude/skills/   # stackchan-flash: load, back up, and restore firmware
 ├── vendor/           # Read-only reference code and graphs (gitignored)
@@ -52,6 +53,7 @@ Hermes has no fork. Install it separately and record the tested version in `docs
 
 - Use only the `stackchan-flash` skill. Do not use `idf.py flash` or esptool directly.
 - Every write to the robot needs explicit user confirmation.
+- Build images with the `stackchan-build` skill. They live in `dist/firmware/<date>-<time>-<purpose>-<commit>/`.
 
 ### Validation
 
@@ -64,6 +66,7 @@ make check-system   # Reports missing apt packages; installs nothing
 make setup          # Submodules, server environment, ESP-IDF v6.1
 make test           # All test suites
 make firmware       # Builds for CoreS3; never writes to the robot
+make firmware-image PURPOSE="..."  # Stores an image in dist/firmware/
 make server-config  # Generates data/.config.yaml for local services
 make server-run     # Starts the server
 ```
