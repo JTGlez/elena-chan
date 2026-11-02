@@ -20,7 +20,7 @@ Tested on 2026-11-02 under WSL2 with Ubuntu 26.04.
 
 ## On the robot
 
-Board `elena-stackchan`, using `server/` with MiniMax for STT, LLM, and TTS: boots, holds a spoken conversation, and shows the avatar. The robot runs the build at `4e577d6`; the image at `fe366d4`, `dist/firmware/20261102-041708-elena-stronger-reds-fe366d4`, is built and verified but not written yet. Details and what was not checked are in [avatar-validation.md](avatar-validation.md).
+Board `elena-stackchan` at `fe366d4` — `dist/firmware/20261102-041708-elena-stronger-reds-fe366d4`, written through the `stackchan-flash` skill with its pre-write snapshot kept — using `server/` with MiniMax for STT, LLM, and TTS: it booted, connected, and recognized Spanish speech, and the user judged the avatar on the screen. Details and what was not checked are in [avatar-validation.md](avatar-validation.md).
 
 Earlier, image `base-xiaozhi-cloud` at `4632dc5`, in Spanish, using the Xiaozhi cloud server, not `server/`.
 

@@ -2,7 +2,7 @@
 
 Results for the `elena-stackchan` board, by where they were checked. A successful build does not validate hardware.
 
-Host checks on 2026-11-02 at firmware `fe366d4`, ESP-IDF v6.1. The robot currently runs the build at `4e577d6`, through the local server with MiniMax for STT, LLM, and TTS.
+Host checks on 2026-11-02 at firmware `fe366d4`, ESP-IDF v6.1. The robot runs that same build, through the local server with MiniMax for STT, LLM, and TTS.
 
 ## Host and build
 
@@ -29,6 +29,8 @@ Automatic listening over WebSocket only. Figures come from the serial log. A dro
 The `task_wdt` warnings did not reset the robot. Each run is one session, so these figures show a direction, not a limit. The current image has one 300 s sample.
 
 Seen by the user on the screen: state text in Spanish on the left, indicators on the right, the speaking animation starting with the voice, one mouth, and the complete thought bubble and music note.
+
+The `fe366d4` write kept NVS and phy: the script's plan listed no region at `0x9000`, and its post-write check of the protected ranges reported them unchanged. After it booted, the server shows an OTA request, a WebSocket session for this build, ASR initialized, and Spanish speech transcribed. Frame and timing figures for this image have not been measured yet.
 
 NVS and phy data were unchanged after each write.
 
@@ -57,7 +59,7 @@ Decided after seeing the first image on the robot:
 
 The board reads the touch controller at boot and logs the panel, as M5Stack's firmware does. This robot reports `FIRMID:0x10`, an ILI9342C, so it keeps the default initialization. Only an ILI9342E (`FIRMID:0x12`) gets its own gamma curves. Those commands have not run on real hardware.
 
-The washed-out red came from the art, not from the GIF format: the ribbon's average color barely changes from the master sheet to the GIF. `elena_avatar_refit.py` now saturates the reds. Whether that looks right is judged on the robot.
+The washed-out red came from the art, not from the GIF format: the ribbon's average color barely changes from the master sheet to the GIF. `elena_avatar_refit.py` now saturates the reds. Judged on the robot by the user on 2026-11-02 and accepted.
 
 ## Known limits
 
