@@ -84,6 +84,20 @@ def store_image(build: Path, sdkconfig: Path, lock: Path, destination: Path, man
     partial.rename(destination)
 
 
+def flash_app(build: Path) -> Path:
+    """The application named by flasher_args.json."""
+    args = json.loads((build / "flasher_args.json").read_text(encoding="utf-8"))
+    return build / args["flash_files"]["0x20000"]
+
+
+def check_language(app: Path, language: str) -> None:
+    """A stale generated header once shipped Chinese strings in an es-ES image."""
+    locale = FIRMWARE / "main" / "assets" / "locales" / language / "language.json"
+    expected = json.loads(locale.read_text(encoding="utf-8"))["strings"]["LISTENING"]
+    if expected.encode() not in app.read_bytes():
+        raise SystemExit(f"The built app does not contain the {language} strings; rebuild it.")
+
+
 def git(*args: str, cwd: Path = FIRMWARE) -> str:
     return subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True, text=True).stdout.strip()
 
@@ -150,6 +164,7 @@ def main() -> int:
     build = FIRMWARE / "build"
     if url and url.encode() not in (build / "xiaozhi.bin").read_bytes():
         raise SystemExit("The built app does not contain OTA_URL.")
+    check_language(flash_app(build), args.language)
     match = re.search(r'^CONFIG_OTA_URL="(.*)"$', sdkconfig.read_text(encoding="utf-8"), re.MULTILINE)
 
     if source_fingerprint(FIRMWARE) != source_sha256:

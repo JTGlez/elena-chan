@@ -97,7 +97,13 @@ class SelectionTests(unittest.TestCase):
     def test_generic_cores3_override(self):
         self.check_image('m5stack/core-s3', 'm5stack-core-s3', 'CONFIG_BOARD_TYPE_M5STACK_CORE_S3')
 
-    def check_image(self, board, variant, symbol):
+    def test_app_built_in_another_language_is_not_packaged(self):
+        with self.assertRaises(SystemExit) as stopped:
+            self.check_image('elena-stackchan', 'elena-stackchan', 'CONFIG_BOARD_TYPE_ELENA_STACKCHAN',
+                             app_bytes='聆听中...'.encode())
+        self.assertIn('es-ES', str(stopped.exception))
+
+    def check_image(self, board, variant, symbol, app_bytes=b'app Escuchando... app'):
         import build_firmware_image as image
         from unittest import mock
         # The actual selection resolver uses the real versioned board configuration.
@@ -108,11 +114,14 @@ class SelectionTests(unittest.TestCase):
             build = firmware/'build'
             build.mkdir(parents=True)
             (firmware/'dependencies.lock').write_text('version: 3\n')
+            locale = firmware/'main/assets/locales/es-ES'
+            locale.mkdir(parents=True)
+            (locale/'language.json').write_text(json.dumps({'strings': {'LISTENING': 'Escuchando...'}}))
             calls = []
             def run(*args):
                 calls.append(args)
                 (firmware/'sdkconfig').write_text(f'{symbol}=y\nCONFIG_OTA_URL="https://test.invalid/ota/"\n')
-                (build/'app.bin').write_bytes(b'app')
+                (build/'app.bin').write_bytes(app_bytes)
                 (build/'flasher_args.json').write_text(json.dumps({'flash_files': {'0x20000':'app.bin'}}))
             with mock.patch.object(image, 'FIRMWARE', firmware), mock.patch.object(image, 'ROOT', root), \
                  mock.patch.object(image, 'DIST', root/'dist'), mock.patch.object(image, 'git', return_value='abc1234'), \
