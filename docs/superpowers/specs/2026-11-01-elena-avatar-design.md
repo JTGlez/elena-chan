@@ -1,6 +1,6 @@
 # Elena: avatar de conversación para CoreS3
 
-Estado: **borrador para revisión**. Fecha: 2026-11-01.
+Estado: **aprobado por el usuario** el 2026-11-01. Fecha: 2026-11-01.
 
 Este documento especifica la primera integración del avatar. No autoriza una
 escritura al robot ni constituye evidencia de funcionamiento en hardware.
@@ -16,11 +16,11 @@ existente. También indicó que no le interesan los subtítulos. Por tanto, esta
 variante no mostrará transcripciones del usuario ni texto de las respuestas,
 incluidas las notificaciones habladas.
 
-Las decisiones siguientes son propuestas técnicas del autor, sujetas a la
-revisión del documento: indicadores mínimos de batería/conexión; avisos
+Las decisiones siguientes fueron propuestas técnicas del autor y quedaron
+adoptadas con la aprobación del documento: indicadores mínimos de batería/conexión; avisos
 operativos legibles; temporizadores de 5 y 30 segundos; presupuestos de memoria
-y respuesta visual; y nombre de la nueva placa. No son preferencias que el
-usuario haya solicitado expresamente.
+y respuesta visual; y nombre de la nueva placa. Se distinguen de las
+preferencias expresadas inicialmente por el usuario.
 
 ### Alcance de la primera entrega
 
