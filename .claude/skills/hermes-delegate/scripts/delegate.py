@@ -161,7 +161,7 @@ def launch(label, state, brief, args):
 
     command = [hermes_binary(), "chat", "--query-file", str(brief_copy), "-Q", "--format", "stream-json",
                "--provider", config["provider"], "-m", config["model"], "--in", state["cwd"], "--source", "tool", "--accept-hooks",
-               "--max-turns", str(args.max_turns), "--run-budget", str(args.run_budget)]
+               "--max-turns", str(args.max_turns)]
     if args.skills:
         command += ["--skills", args.skills]
     if state.get("session_id"):
@@ -389,7 +389,6 @@ def main(argv=None):
         sub.add_argument("label")
         sub.add_argument("--brief", required=True, help="markdown file holding the instruction")
         sub.add_argument("--max-turns", type=int, default=80, help="tool-call iterations for this turn")
-        sub.add_argument("--run-budget", type=int, default=2700, help="wall-clock seconds for this turn")
         sub.add_argument("--skills", help="Hermes skills to preload, comma separated")
 
     start = commands.add_parser("start", help="start a new session from a full brief")

@@ -94,6 +94,7 @@ Check all of these in a copy made with `git archive <sha> | tar -x -C <scratch d
 
 - One turn runs at a time, and subagents the agent spawns share its backend.
 - `status` reports what happened, not whether it is right. Only the gate says that.
+- A call the guard blocks emits no event, so `watch` does not show it. Require blocked calls in the brief's report.
 - Pushing, merging and deploying stay with the user.
 - After three corrections on the same defect with no progress, stop and tell the user what failed. Do not take over the code silently.
 

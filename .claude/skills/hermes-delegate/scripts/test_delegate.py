@@ -2,6 +2,7 @@
 import json
 import os
 import signal
+import sqlite3
 import stat
 import subprocess
 import sys
@@ -237,6 +238,8 @@ class DelegateTest(unittest.TestCase):
         self.assertIn("--query-file", args)
         self.assertNotIn("-z", args)
         self.assertNotIn("--yolo", args)
+        # The gateway-backed chat path refuses this flag outright.
+        self.assertNotIn("--run-budget", args)
         self.assertNotIn("--resume", args)
 
     def test_watch_reports_tools_errors_and_result_then_exits(self):
@@ -436,6 +439,41 @@ class GuardTest(unittest.TestCase):
         self.assert_allowed("terminal", {"command": "git push"}, cwd=self.elsewhere)
         self.assert_blocked("terminal", {"command": f"cd {self.project}/app && git push"}, cwd=self.elsewhere)
         self.assert_blocked("write_file", {"path": f"{self.project}/build/x"}, cwd=self.elsewhere)
+
+    def session_call(self, command, session_id, rows, cwd=None):
+        # A gateway-run session's payload names the gateway's directory; the store holds the session's.
+        home = Path(self.tmp.name) / "home"
+        home.mkdir(exist_ok=True)
+        db = sqlite3.connect(home / "state.db")
+        db.execute("create table if not exists sessions (id text, cwd text, parent_session_id text)")
+        db.executemany("insert into sessions values (?, ?, ?)", rows)
+        db.commit()
+        db.close()
+        payload = {"tool_name": "terminal", "tool_input": {"command": command}, "session_id": session_id,
+                   "cwd": str(cwd or self.elsewhere)}
+        return subprocess.run([sys.executable, str(GUARD)], input=json.dumps(payload), capture_output=True,
+                              text=True, timeout=10, env={**os.environ, "HERMES_HOME": str(home)})
+
+    def test_gateway_session_uses_the_stored_cwd(self):
+        result = self.session_call("git push", "s1", [("s1", str(self.project), None)])
+        self.assertEqual(json.loads(result.stdout).get("action"), "block")
+
+    def test_subagent_inherits_its_parents_cwd(self):
+        result = self.session_call("git push", "child", [("root", str(self.project), None), ("child", None, "root")])
+        self.assertEqual(json.loads(result.stdout).get("action"), "block")
+
+    def test_session_of_another_project_is_not_blocked(self):
+        result = self.session_call("git push", "s2", [("s2", str(self.elsewhere), None)])
+        self.assertEqual((result.returncode, result.stdout), (0, ""))
+
+    def test_unreadable_session_store_blocks(self):
+        home = Path(self.tmp.name) / "home"
+        home.mkdir()
+        (home / "state.db").write_text("not a database, long enough to be read as a header" * 4)
+        payload = {"tool_name": "terminal", "tool_input": {"command": "ls"}, "session_id": "s", "cwd": str(self.elsewhere)}
+        result = subprocess.run([sys.executable, str(GUARD)], input=json.dumps(payload), capture_output=True,
+                                text=True, timeout=10, env={**os.environ, "HERMES_HOME": str(home)})
+        self.assertEqual(result.returncode, 2)
 
     def test_malformed_payload_blocks(self):
         result = subprocess.run([sys.executable, str(GUARD)], input="not json", capture_output=True,

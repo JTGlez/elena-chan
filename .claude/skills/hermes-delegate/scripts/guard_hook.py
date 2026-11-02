@@ -6,12 +6,15 @@ block directive, or nothing to allow. A payload or config it cannot read exits 2
 treats as a block. It stops honest mistakes; it is not a sandbox.
 """
 import json
+import os
 import re
 import shlex
+import sqlite3
 import sys
 from pathlib import Path
 
 CONFIG_NAME = ".hermes-delegate.json"
+MAX_SESSION_DEPTH = 8
 HINT = "Report it to the supervisor instead of working around it."
 
 WRAPPERS = {"sudo", "env", "command", "time", "nohup", "exec", "nice", "timeout"}
@@ -154,13 +157,39 @@ class Guard:
         return None
 
 
+def session_cwd(session_id):
+    """The directory Hermes recorded for a session, or for the nearest ancestor that has one."""
+    home = Path(os.environ.get("HERMES_HOME") or Path.home() / ".hermes")
+    store = home / "state.db"
+    if not session_id or not store.is_file():
+        return None
+    db = sqlite3.connect(f"{store.as_uri()}?mode=ro", uri=True, timeout=5)
+    try:
+        for _ in range(MAX_SESSION_DEPTH):
+            row = db.execute("select cwd, parent_session_id from sessions where id=?", (session_id,)).fetchone()
+            if row is None:
+                return None
+            if row[0]:
+                return row[0]
+            session_id = row[1]
+            if not session_id:
+                return None
+    finally:
+        db.close()
+    return None
+
+
 def find_config(payload):
     """The first project config above the working directory or any absolute path the call names."""
     cwd = Path(str(payload.get("cwd") or "/"))
     tool_input = payload.get("tool_input") or {}
     candidates = [cwd]
+    # A gateway-run session's payload names the gateway's directory; the store holds the session's.
+    stored = session_cwd(payload.get("session_id"))
+    if stored:
+        candidates.insert(0, Path(stored))
     if tool_input.get("path"):
-        candidates.append(cwd / str(tool_input["path"]))
+        candidates.append(candidates[0] / str(tool_input["path"]))
     candidates += [Path(match) for match in ABSOLUTE_PATH.findall(json.dumps(tool_input, ensure_ascii=False))]
     for candidate in candidates:
         for directory in (candidate, *candidate.parents):
@@ -178,7 +207,7 @@ def main():
         if path is None:
             return 0
         guard = Guard(json.loads(path.read_text()))
-    except (ValueError, KeyError, TypeError, OSError, re.error) as error:
+    except (ValueError, KeyError, TypeError, OSError, re.error, sqlite3.Error) as error:
         print(f"guard_hook: cannot evaluate this call: {error}", file=sys.stderr)
         return 2
     reason = guard.decide(tool, payload.get("tool_input"))
