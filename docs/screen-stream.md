@@ -109,6 +109,17 @@ What was heard matches for the worst moment: without the cache, the user noticed
 
 **Decision:** keep the cache on by default. Use `--no-cache` only to measure it.
 
+With `AVATAR=emoji`, a 299 s session dropped 0 of 2537 voice packets and no microphone frames, with the cache on and the TTS working throughout. It compressed about 2,070 strips, far more than any Elena session, because the scrolling subtitle makes nearly every frame new. Most of the compressing happened while the robot was speaking. So compression, even at this rate, does not cause drops by itself. Elena's GIF playback may be part of the cause, unconfirmed.
+
+The viewer shows only part of what the robot draws. It sends the latest screen when its low-priority task wakes, and skips the ones in between:
+
+| Session | Frames the robot drew | Frames at the PC | Captured |
+|---|---|---|---|
+| Elena | 3.5 to 3.7 per second | 1.6 to 1.9 per second | About half |
+| Emoji with a scrolling subtitle | 19.4 per second | 6.8 per second | 35% |
+
+Sequence numbers show the frames are skipped on the robot, not lost on the network. This is a design limit, not a hardware one. A planned improvement: queue each frame's hashes and time on the robot and send them in batches.
+
 ## Lost voice from the LLM
 
 A different cut, with no viewer connected: at 13:10 the LLM stalled for 40 s and returned garbage, the TTS failed with an empty error, and the robot stayed in `speaking` without audio. After 30 s the avatar went back to rest while the text still said it was speaking. The LLM's text also contains corrupted words in other turns. This is not related to the stream.
