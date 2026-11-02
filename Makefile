@@ -77,8 +77,8 @@ firmware-image: ## Build an image in dist/firmware; set PURPOSE, optional LANGUA
 firmware-index: ## Refresh the compile database that VS Code reads
 	$(IDF_ENV) && cd firmware && idf.py reconfigure
 
-server-config: ## Generate the gitignored server config for local services
-	python3 tools/gen_server_config.py $(if $(FORCE),--force)
+server-config: ## Generate the gitignored server config; PROFILE=local (default) or minimax
+	python3 tools/gen_server_config.py --profile $(or $(PROFILE),local) $(if $(FORCE),--force)
 
-server-run: ## Start the server; the local LLM and voice services run separately
+server-run: ## Start the server with the generated config; local services run separately
 	cd $(SERVER_DIR) && $(SERVER_PY) app.py

@@ -6,7 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from gen_server_config import generate  # noqa: E402
+from gen_server_config import PROFILES, generate  # noqa: E402
 
 
 class GenerateTests(unittest.TestCase):
@@ -42,6 +42,51 @@ class GenerateTests(unittest.TestCase):
         self.env.write_text("OTHER=1\n", encoding="utf-8")
         with self.assertRaises(SystemExit):
             generate(self.template, self.env, self.output)
+        self.assertFalse(self.output.exists())
+
+
+class MinimaxProfileTests(unittest.TestCase):
+    def setUp(self):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        self.dir = Path(temp.name)
+        self.env = self.dir / "minimax.env"
+        self.env.write_text("MINIMAX_API_KEY=abc\n", encoding="utf-8")
+        self.firmware_env = self.dir / "firmware.local.env"
+        self.firmware_env.write_text(
+            "OTA_URL=http://192.0.2.10:8003/xiaozhi/ota/\n", encoding="utf-8"
+        )
+        self.output = self.dir / ".config.yaml"
+
+    def run_generate(self):
+        generate(
+            PROFILES["minimax"].template,
+            self.env,
+            self.output,
+            key_name="MINIMAX_API_KEY",
+            firmware_env=self.firmware_env,
+        )
+        return self.output.read_text(encoding="utf-8")
+
+    def test_fills_every_placeholder(self):
+        content = self.run_generate()
+        self.assertNotIn("@", content)
+        self.assertIn('api_key: "abc"', content)
+        self.assertIn('websocket: "ws://192.0.2.10:8000/xiaozhi/v1/"', content)
+        self.assertIn('vision_explain: "http://192.0.2.10:8003/mcp/vision/explain"', content)
+
+    def test_refuses_the_example_address(self):
+        self.firmware_env.write_text(
+            "OTA_URL=http://YOUR_SERVER_ADDRESS:8003/xiaozhi/ota/\n", encoding="utf-8"
+        )
+        with self.assertRaises(SystemExit):
+            self.run_generate()
+        self.assertFalse(self.output.exists())
+
+    def test_refuses_an_empty_key(self):
+        self.env.write_text("MINIMAX_API_KEY=\n", encoding="utf-8")
+        with self.assertRaises(SystemExit):
+            self.run_generate()
         self.assertFalse(self.output.exists())
 
 

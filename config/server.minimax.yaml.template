@@ -1,0 +1,52 @@
+# Overrides for the server's config.yaml, using MiniMax for STT, LLM and TTS.
+# `make server-config PROFILE=minimax` writes the result to data/.config.yaml, which is gitignored.
+
+server:
+  websocket: "@WEBSOCKET_URL@"
+  vision_explain: "@VISION_URL@"
+  timezone_offset: @TIMEZONE_OFFSET@
+  auth_key: "@AUTH_KEY@"
+  auth:
+    enabled: true
+    allowed_devices: []
+
+selected_module:
+  VAD: SileroVAD
+  ASR: MinimaxSTT
+  LLM: MinimaxLLM
+  TTS: MinimaxTTS
+  Memory: nomem
+  Intent: nointent
+
+prompt: |
+  Eres Elena, una pequeña robot de escritorio. Responde en el idioma de la persona,
+  con frases breves y naturales, porque tu respuesta se convertirá en voz.
+
+ASR:
+  # The server's openai adapter fits this endpoint: multipart request, `text` in the reply.
+  MinimaxSTT:
+    type: openai
+    api_key: "@MINIMAX_API_KEY@"
+    base_url: https://api.minimax.io/v1/speech_to_text
+    model_name: asr-1.0
+    output_dir: tmp/
+
+LLM:
+  MinimaxLLM:
+    type: openai
+    api_key: "@MINIMAX_API_KEY@"
+    base_url: https://api.minimax.io/v1
+    model_name: MiniMax-M3
+    # Thinking delays the first spoken word, and a voice reply does not need it.
+    extra_body:
+      thinking:
+        type: disabled
+
+TTS:
+  MinimaxTTS:
+    type: minimax_httpstream
+    api_key: "@MINIMAX_API_KEY@"
+    host: api.minimax.io
+    model: speech-2.8-turbo
+    voice_id: Spanish_Kind-heartedGirl
+    output_dir: tmp/

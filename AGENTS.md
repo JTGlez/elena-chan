@@ -68,7 +68,7 @@ make test           # All test suites
 make check-locks    # Fails if pinned versions drifted; run after a firmware build
 make firmware       # Builds for CoreS3; never writes to the robot
 make firmware-image PURPOSE="..."  # Stores an image in dist/firmware/
-make server-config  # Generates data/.config.yaml for local services
+make server-config  # Generates data/.config.yaml for local services; PROFILE=minimax uses MiniMax
 make server-run     # Starts the server
 ```
 
@@ -81,6 +81,8 @@ Each Python environment stays separate:
 | System | `python3` | Any current version | `tools/` and skills, standard library only |
 
 Activate ESP-IDF in a shell with `source tools/idf-env.sh`. Other ESP-IDF versions on the machine are unaffected.
+
+`PROFILE=minimax` reads `MINIMAX_API_KEY` from `config/minimax.env` and the server address from `OTA_URL` in `config/firmware.local.env`. Both files are gitignored; copy them from their `.example` files. Replacing an existing config needs `FORCE=1`.
 
 The server's two skipped tests are skipped upstream through a fixed `pytest.skip`. Leave them as they are.
 

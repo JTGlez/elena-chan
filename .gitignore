@@ -24,3 +24,6 @@ __pycache__/
 
 # Local server address for firmware builds
 /config/firmware.local.env
+
+# MiniMax API key for the cloud server profile
+/config/minimax.env
