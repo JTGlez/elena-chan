@@ -49,9 +49,8 @@ test-firmware: ## Run the firmware's host-side script tests
 test-tools: ## Run this repository's tool and skill tests
 	python3 -m unittest discover -s tools/tests
 	cd .claude/skills/stackchan-flash/scripts && python3 -m unittest test_stackchan_flash
-	@if [ -f .claude/skills/local-model/scripts/test_model_gate.py ]; then \
-		cd .claude/skills/local-model/scripts && python3 -m unittest test_model_gate; \
-	fi
+	cd .claude/skills/local-model/scripts && python3 -m unittest test_model_gate
+	cd .claude/skills/hermes-delegate/scripts && python3 -m unittest test_delegate
 
 check-locks: check-server-lock check-firmware-lock ## Fail if a lock file no longer matches its inputs
 

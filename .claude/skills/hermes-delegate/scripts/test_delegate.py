@@ -22,7 +22,7 @@ GUARD_RULES = {
         {"pattern": r"^python[0-9.]* .*\bflashtool\b", "reason": "flashing is the user's"},
         {"pattern": r"^fwtool .*\b(flash|erase[-_]flash)\b", "reason": "flashing is the user's"},
         {"pattern": r"^docker .*\b(stop|kill|rm|restart|down)\b", "reason": "other services"},
-        {"pattern": r"^python[0-9.]* .*model_gate.*\b(stop|use)\b", "reason": "the gate"},
+        {"pattern": r"^python[0-9.]* .*svc_ctl.*\b(stop|use)\b", "reason": "the service"},
     ],
     "blocked_code": [{"pattern": r"\bflashtool\b", "reason": "flashing is the user's"}],
     "secret_paths": [r"(^|[\s/'\"=])(\.env|prod\.env|\.config\.yaml)(?![\w.-])"],
@@ -71,11 +71,11 @@ FAKE_HERMES = textwrap.dedent("""\
          tokens={"input": 10, "output": 20, "total": 30})
     """)
 
-GATE = textwrap.dedent("""\
+READY = textwrap.dedent("""\
     #!/usr/bin/env python3
-    import json, os
-    print(json.dumps({"active": os.environ.get("FAKE_ACTIVE", "primary"),
-                      "inflight": int(os.environ.get("FAKE_INFLIGHT", "0")), "switching": False}))
+    import os, sys
+    print(os.environ.get("FAKE_READY_MESSAGE", "ready"))
+    sys.exit(int(os.environ.get("FAKE_READY_EXIT", "0")))
     """)
 
 
@@ -87,13 +87,12 @@ class DelegateTest(unittest.TestCase):
         self.fake = root / "hermes"
         self.fake.write_text(FAKE_HERMES)
         self.fake.chmod(self.fake.stat().st_mode | stat.S_IEXEC)
-        self.gate = root / "gate.py"
-        self.gate.write_text(GATE)
+        self.ready = root / "ready.py"
+        self.ready.write_text(READY)
         self.project = root / "project"
         self.project.mkdir()
         self.project_config = {"provider": "prov", "model": "mod-1",
-                               "busy_check": {"command": [sys.executable, str(self.gate)],
-                                              "expected_active": "primary"}}
+                               "ready_command": [sys.executable, str(self.ready)]}
         self.write_project_config()
         self.config = root / "config.yaml"
         self.config.write_text("model:\n  default: other\n")
@@ -178,25 +177,54 @@ class DelegateTest(unittest.TestCase):
         self.assertIn("Verify", result.stderr)
         self.assertFalse(self.args.exists())
 
-    def test_refuses_when_model_is_busy(self):
+    def test_refuses_when_not_ready_and_shows_why(self):
         self.install()
-        result = self.start(env={"FAKE_INFLIGHT": "2"})
+        result = self.start(env={"FAKE_READY_EXIT": "1", "FAKE_READY_MESSAGE": "backend is busy"})
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("inflight", result.stderr)
+        self.assertIn("backend is busy", result.stderr)
         self.assertFalse(self.args.exists())
 
-    def test_refuses_when_other_model_is_active(self):
+    def test_runs_without_ready_command(self):
         self.install()
-        result = self.start(env={"FAKE_ACTIVE": "secondary"})
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("secondary", result.stderr)
-
-    def test_runs_without_busy_check(self):
-        self.install()
-        del self.project_config["busy_check"]
+        del self.project_config["ready_command"]
         self.write_project_config()
         self.assertEqual(self.start().returncode, 0)
         self.wait_finished()
+
+    def test_local_config_supplies_the_route(self):
+        self.install()
+        (self.project / ".hermes-delegate.json").write_text('{"guard": {}}')
+        (self.project / ".hermes-delegate.local.json").write_text(json.dumps(self.project_config))
+        self.assertEqual(self.start().returncode, 0)
+        self.wait_finished()
+        args = self.calls()[0]
+        self.assertEqual(args[args.index("--provider") + 1], "prov")
+
+    def test_local_config_overrides_the_shared_one(self):
+        self.install()
+        (self.project / ".hermes-delegate.local.json").write_text('{"model": "mod-2"}')
+        self.assertEqual(self.start().returncode, 0)
+        self.wait_finished()
+        args = self.calls()[0]
+        self.assertEqual(args[args.index("-m") + 1], "mod-2")
+
+    def test_hermes_default_route_must_be_chosen_explicitly(self):
+        self.install()
+        self.project_config = {"use_hermes_default": True}
+        self.write_project_config()
+        self.assertEqual(self.start().returncode, 0)
+        self.wait_finished()
+        args = self.calls()[0]
+        self.assertNotIn("--provider", args)
+        self.assertNotIn("-m", args)
+
+    def test_provider_without_model_is_refused(self):
+        self.install()
+        self.project_config = {"provider": "prov"}
+        self.write_project_config()
+        result = self.start()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("provider and model", result.stderr)
 
     def test_refuses_without_project_config(self):
         self.install()
@@ -206,13 +234,13 @@ class DelegateTest(unittest.TestCase):
         self.assertIn(".hermes-delegate.json", result.stderr)
         self.assertFalse(self.args.exists())
 
-    def test_refuses_config_without_model(self):
+    def test_refuses_config_without_a_route(self):
         self.install()
-        del self.project_config["model"]
+        self.project_config = {"guard": {}}
         self.write_project_config()
         result = self.start()
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("model", result.stderr)
+        self.assertIn("use_hermes_default", result.stderr)
         self.assertFalse(self.args.exists())
 
     def test_finds_config_in_a_parent_directory(self):
@@ -379,7 +407,7 @@ class GuardTest(unittest.TestCase):
             "bash -c 'git push'",
             "docker stop model-worker",
             "docker compose down",
-            "python3 scripts/model_gate.py stop",
+            "python3 scripts/svc_ctl.py stop",
             "cat config/prod.env",
             "cat data/.config.yaml",
             "timeout 60 git push",
@@ -399,7 +427,7 @@ class GuardTest(unittest.TestCase):
             "python3 -m unittest discover -s app/scripts/tests",
             "make app PURPOSE='a test'",
             "docker ps",
-            "python3 scripts/model_gate.py status",
+            "python3 scripts/svc_ctl.py status",
             "cat docs/README.md",
             "cat config/prod.env.example",
             "git -C app add main/boards/mine/a.cc",
@@ -429,6 +457,18 @@ class GuardTest(unittest.TestCase):
         self.assert_blocked("execute_code", {"code": "subprocess.run(['git', 'push'])"})
         self.assert_blocked("execute_code", {"code": "os.system('flashtool.py read_mac')"})
         self.assert_allowed("execute_code", {"code": "print('hello')"})
+
+    def test_local_config_alone_marks_the_project_and_is_protected(self):
+        (self.project / ".hermes-delegate.json").unlink()
+        (self.project / ".hermes-delegate.local.json").write_text("{}")
+        self.assert_blocked("terminal", {"command": "git push"})
+        self.assert_blocked("write_file", {"path": ".hermes-delegate.local.json", "content": "x"})
+
+    def test_local_guard_rules_apply_too(self):
+        (self.project / ".hermes-delegate.local.json").write_text(
+            json.dumps({"guard": {"blocked_commands": [{"pattern": "^mytool", "reason": "mine"}]}}))
+        self.assert_blocked("terminal", {"command": "mytool run"})
+        self.assert_blocked("terminal", {"command": "flashtool.py read_mac"})
 
     def test_builtin_rules_need_only_a_project_config(self):
         (self.project / ".hermes-delegate.json").write_text("{}")

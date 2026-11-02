@@ -11,16 +11,23 @@ Hermes writes the code. The supervisor writes briefs, verifies the results and s
 
 ## Before the first turn
 
-Add `.hermes-delegate.json` at the project root. `start` refuses to run without `provider` and `model`, so work never falls through to Hermes' default model:
+A project has two config files, read from its root:
+
+- `.hermes-delegate.json` is shared and versioned: the project's guard rules.
+- `.hermes-delegate.local.json` is this machine's and stays out of version control: which Hermes route to use. Add it to `.gitignore`.
+
+Local values override shared ones, and guard rules from both apply. Hermes owns the choice of model. This skill passes these values through without interpreting them:
 
 ```json
 {
-  "provider": "<provider name in Hermes>",
+  "provider": "<Hermes provider>",
   "model": "<model id>",
-  "busy_check": {
-    "command": ["<program>", "<args>"],
-    "expected_active": "<optional backend name>"
-  },
+  "ready_command": ["<program>", "<args>"]
+}
+```
+
+```json
+{
   "guard": {
     "blocked_commands": [{"pattern": "^deploy\\b", "reason": "deploys are the user's"}],
     "blocked_code": [{"pattern": "\\bdeploy\\(", "reason": "deploys are the user's"}],
@@ -30,9 +37,8 @@ Add `.hermes-delegate.json` at the project root. `start` refuses to run without 
 }
 ```
 
-Only `provider` and `model` are required.
-
-- **`busy_check`:** for a backend that serves one stream at a time. The command runs from the project root and prints JSON with `inflight` and optionally `active`. A turn will not start while `inflight` is above zero, or while another backend is active.
+- **Route:** set `provider` and `model` together, or `"use_hermes_default": true` to run whatever Hermes is configured with. `start` refuses a project that chose neither, so work never reaches a default by accident.
+- **`ready_command`:** optional. Runs from the project root before each turn. Exit 0 means go; any other exit stops the turn and shows its output.
 - **`blocked_commands`:** regular expressions matched against each simple command, written as its program name followed by its arguments.
 - **`blocked_code`:** regular expressions matched against `execute_code` source.
 - **`secret_paths`:** blocked for reading and writing. **`protected_paths`:** blocked for writing.
@@ -40,7 +46,7 @@ Only `provider` and `model` are required.
 Then:
 
 1. Confirm no interactive Hermes session is working in the same project. `delegate.py` only knows its own turns, and two writers corrupt each other's work. If one is active, ask the user to close it.
-2. Run `install-guard` once. It adds a hook to Hermes' config. In any project with a `.hermes-delegate.json`, the hook blocks your rules plus `git push`, `--no-verify`, `git reset --hard`, `git clean -f` and `git add -A`. Other projects are unaffected. Undo with `uninstall-guard`.
+2. Run `install-guard` once. It adds a hook to Hermes' config. In any project with one of these files, the hook blocks your rules plus `git push`, `--no-verify`, `git reset --hard`, `git clean -f` and `git add -A`. Other projects are unaffected. Undo with `uninstall-guard`.
 3. In a throwaway turn, ask the agent to run `git push --dry-run no-such-remote` and look for `Blocked by project guard`. Repeat after updating Hermes.
 
 The guard stops honest mistakes. It is not a sandbox.
@@ -92,7 +98,7 @@ Check all of these in a copy made with `git archive <sha> | tar -x -C <scratch d
 
 ## Limits
 
-- One turn runs at a time, and subagents the agent spawns share its backend.
+- One turn runs at a time, across all projects on this machine.
 - `status` reports what happened, not whether it is right. Only the gate says that.
 - A call the guard blocks emits no event, so `watch` does not show it. Require blocked calls in the brief's report.
 - Pushing, merging and deploying stay with the user.
@@ -104,4 +110,4 @@ Check all of these in a copy made with `git archive <sha> | tar -x -C <scratch d
 |---|---|
 | Running `hermes -z` by hand | Dangerous commands are approved automatically |
 | One session for several tasks | Context compaction costs minutes and many tokens |
-| Treating `SILENT` as a hang | Long thinking is silent too; read the model provider's logs first |
+| Treating `SILENT` as a hang | Long thinking is silent too; check where the model runs before acting |

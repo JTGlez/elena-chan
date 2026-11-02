@@ -17,7 +17,7 @@ import time
 from pathlib import Path
 
 GUARD = Path(__file__).resolve().parent / "guard_hook.py"
-CONFIG_NAME = ".hermes-delegate.json"
+CONFIG_NAMES = (".hermes-delegate.json", ".hermes-delegate.local.json")  # shared, then this machine's
 REQUIRED_SECTIONS = ("Goal", "Files", "Tests", "Verify", "Forbidden", "Report")
 LABEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
 GUARD_BEGIN = "# >>> hermes-delegate guard >>>"
@@ -44,16 +44,26 @@ def config_path():
 
 
 def find_project(cwd):
-    """The nearest directory holding a project config, and that config."""
+    """The nearest directory with a project config, and its shared and machine settings merged."""
     for directory in (cwd, *cwd.parents):
-        path = directory / CONFIG_NAME
-        if path.is_file():
-            config = json.loads(path.read_text())
-            missing = [key for key in ("provider", "model") if not config.get(key)]
-            if missing:
-                raise DelegateError(f"{path} lacks: {', '.join(missing)}")
+        paths = [directory / name for name in CONFIG_NAMES]
+        if any(path.is_file() for path in paths):
+            config = {}
+            for path in paths:
+                if path.is_file():
+                    config.update(json.loads(path.read_text()))
+            check_route(directory, config)
             return directory, config
-    raise DelegateError(f"no {CONFIG_NAME} at or above {cwd}: see the skill's setup section")
+    raise DelegateError(f"no {CONFIG_NAMES[0]} or {CONFIG_NAMES[1]} at or above {cwd}: see the skill's setup section")
+
+
+def check_route(directory, config):
+    """Which model runs is Hermes' business, but the choice must be explicit: never an accidental default."""
+    if bool(config.get("provider")) != bool(config.get("model")):
+        raise DelegateError(f"{directory}: set provider and model together")
+    if not config.get("provider") and not config.get("use_hermes_default"):
+        raise DelegateError(f"{directory}: no route. Set provider and model, or use_hermes_default: true, "
+                            f"in {CONFIG_NAMES[1]}")
 
 
 def run_dir(label):
@@ -121,19 +131,14 @@ def guard_installed():
     return path.exists() and GUARD_BEGIN in path.read_text() and str(GUARD) in path.read_text()
 
 
-def check_busy(root, config):
-    busy = config.get("busy_check")
-    if not busy:
+def check_ready(root, config):
+    command = config.get("ready_command")
+    if not command:
         return
-    result = subprocess.run(busy["command"], capture_output=True, text=True, timeout=30, cwd=root)
+    result = subprocess.run(command, capture_output=True, text=True, timeout=60, cwd=root)
     if result.returncode != 0:
-        raise DelegateError(f"busy_check failed: {result.stderr.strip()[:300]}")
-    status = json.loads(result.stdout)
-    if status.get("inflight"):
-        raise DelegateError(f"the backend is busy: inflight={status['inflight']}; wait for it")
-    active, expected = status.get("active"), busy.get("expected_active")
-    if active and expected and active != expected:
-        raise DelegateError(f"active backend is {active}, not {expected}; switching it is the user's call")
+        detail = (result.stderr or result.stdout).strip()[:400]
+        raise DelegateError(f"not ready: {detail or f'ready_command exited {result.returncode}'}")
 
 
 def check_brief(path):
@@ -151,7 +156,7 @@ def launch(label, state, brief, args):
     if not guard_installed():
         raise DelegateError(f"the guard is not in {config_path()}: run install-guard first")
     root, config = find_project(Path(state["cwd"]))
-    check_busy(root, config)
+    check_ready(root, config)
 
     directory = run_dir(label)
     directory.mkdir(parents=True, exist_ok=True)
@@ -160,8 +165,9 @@ def launch(label, state, brief, args):
     shutil.copyfile(brief, brief_copy)
 
     command = [hermes_binary(), "chat", "--query-file", str(brief_copy), "-Q", "--format", "stream-json",
-               "--provider", config["provider"], "-m", config["model"], "--in", state["cwd"], "--source", "tool", "--accept-hooks",
-               "--max-turns", str(args.max_turns)]
+               "--in", state["cwd"], "--source", "tool", "--accept-hooks", "--max-turns", str(args.max_turns)]
+    if config.get("provider"):
+        command += ["--provider", config["provider"], "-m", config["model"]]
     if args.skills:
         command += ["--skills", args.skills]
     if state.get("session_id"):

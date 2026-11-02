@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Hermes pre_tool_call hook: enforces a project's rules on agent tool calls.
 
-Applies only to projects with a .hermes-delegate.json. Reads the hook payload on stdin. Prints a
+Applies only to projects with a .hermes-delegate.json or .hermes-delegate.local.json. Reads the hook payload on stdin. Prints a
 block directive, or nothing to allow. A payload or config it cannot read exits 2, which Hermes
 treats as a block. It stops honest mistakes; it is not a sandbox.
 """
@@ -13,7 +13,7 @@ import sqlite3
 import sys
 from pathlib import Path
 
-CONFIG_NAME = ".hermes-delegate.json"
+CONFIG_NAMES = (".hermes-delegate.json", ".hermes-delegate.local.json")
 MAX_SESSION_DEPTH = 8
 HINT = "Report it to the supervisor instead of working around it."
 
@@ -150,8 +150,8 @@ class Guard:
         if tool in ("read_file", "write_file", "patch") and self.is_secret(path):
             return "this file holds secrets"
         if tool in ("write_file", "patch"):
-            if Path(path).name == CONFIG_NAME:
-                return f"{CONFIG_NAME} is the supervisor's"
+            if Path(path).name in CONFIG_NAMES:
+                return f"{Path(path).name} is the supervisor's"
             if any(pattern.search(path) for pattern in self.protected):
                 return f"{path} is protected"
         return None
@@ -193,20 +193,28 @@ def find_config(payload):
     candidates += [Path(match) for match in ABSOLUTE_PATH.findall(json.dumps(tool_input, ensure_ascii=False))]
     for candidate in candidates:
         for directory in (candidate, *candidate.parents):
-            path = directory / CONFIG_NAME
-            if path.is_file():
-                return path
+            paths = [directory / name for name in CONFIG_NAMES if (directory / name).is_file()]
+            if paths:
+                return paths
     return None
+
+
+def merged_rules(paths):
+    rules = {}
+    for path in paths:
+        for key, values in (json.loads(path.read_text()).get("guard") or {}).items():
+            rules.setdefault(key, []).extend(values)
+    return {"guard": rules}
 
 
 def main():
     try:
         payload = json.load(sys.stdin)
         tool = payload["tool_name"]
-        path = find_config(payload)
-        if path is None:
+        paths = find_config(payload)
+        if paths is None:
             return 0
-        guard = Guard(json.loads(path.read_text()))
+        guard = Guard(merged_rules(paths))
     except (ValueError, KeyError, TypeError, OSError, re.error, sqlite3.Error) as error:
         print(f"guard_hook: cannot evaluate this call: {error}", file=sys.stderr)
         return 2

@@ -23,7 +23,7 @@ elena-chan/
 ├── config/           # Templates without secrets
 ├── dist/firmware/    # Firmware images ready to flash (gitignored)
 ├── .github/          # CI workflows
-├── .claude/skills/   # stackchan-flash: load, back up, and restore firmware
+├── .claude/skills/   # Firmware build and flash, local models, delegation to Hermes
 ├── vendor/           # Read-only reference code and graphs (gitignored)
 ├── .localworker/     # Local model workers (gitignored)
 └── .localaudio/      # Local voice lab (gitignored)
@@ -85,6 +85,19 @@ Activate ESP-IDF in a shell with `source tools/idf-env.sh`. Other ESP-IDF versio
 `PROFILE=minimax` reads `MINIMAX_API_KEY` from `config/minimax.env` and the server address from `OTA_URL` in `config/firmware.local.env`. Both files are gitignored; copy them from their `.example` files. Replacing an existing config needs `FORCE=1`.
 
 The server's two skipped tests are skipped upstream through a fixed `pytest.skip`. Leave them as they are.
+
+### Skills that need local setup
+
+Details of a machine stay out of tracked files: each skill reads them from an untracked config created from a tracked example.
+
+| Skill | Needs | Set up |
+|---|---|---|
+| `stackchan-build` | `make setup`, a server address | `config/firmware.local.env`, from its `.example` |
+| `stackchan-flash` | The robot attached | Its "First use with a robot" section |
+| `local-model` | An NVIDIA GPU, Docker, model workers | Its "Set up" section; `doctor` reports what is missing |
+| `hermes-delegate` | Hermes, a route to a model | `.hermes-delegate.local.json`, from `.hermes-delegate.local.example.json`; then `install-guard` |
+
+`.hermes-delegate.local.json` is the only place that joins `local-model` and `hermes-delegate`. To delegate to a remote model, set its provider and model there and remove `ready_command`.
 
 ## Submodules and upstream changes
 

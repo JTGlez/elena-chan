@@ -12,8 +12,9 @@ __pycache__/
 # Local audio lab: builds, Docker image archives and model weights (not tracked)
 /.localaudio/
 
-# Skill tied to this machine's local model workers (not tracked)
-/.claude/skills/local-model/
+# This machine's choice of models and Hermes route (each has a tracked example)
+/.claude/skills/local-model/config/gate.toml
+/.hermes-delegate.local.json
 
 # Editor settings and stray CMake output; they depend on this machine
 /.vscode/
@@ -27,3 +28,6 @@ __pycache__/
 
 # MiniMax API key for the cloud server profile
 /config/minimax.env
+
+# Local assets
+/elena-chan-avatar-kit-v3-platinum

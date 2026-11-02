@@ -1,0 +1,10 @@
+{
+  "provider": "<Hermes provider>",
+  "model": "<model id>",
+  "ready_command": [
+    "python3",
+    ".claude/skills/local-model/scripts/model_gate.py",
+    "ready",
+    "<backend>"
+  ]
+}

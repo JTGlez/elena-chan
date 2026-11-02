@@ -1,22 +1,40 @@
 {
-  "provider": "basalt",
-  "model": "Qwen3.8-Flash-Next-GSQ-RCO-IQ3_XXS",
-  "busy_check": {
-    "command": ["python3", ".claude/skills/local-model/scripts/model_gate.py", "status"],
-    "expected_active": "flash"
-  },
   "guard": {
     "blocked_commands": [
-      {"pattern": "^esptool", "reason": "every write to the robot goes through stackchan-flash and the user"},
-      {"pattern": "^python[0-9.]* .*\\besptool\\b", "reason": "every write to the robot goes through stackchan-flash and the user"},
-      {"pattern": "^idf\\.py .*\\b(flash|erase[-_]flash|encrypted-flash)\\b", "reason": "every write to the robot goes through stackchan-flash and the user"},
-      {"pattern": "^(python[0-9.]*|bash|sh) .*stackchan[-_]flash", "reason": "stackchan-flash runs only with the user's confirmation"},
-      {"pattern": "^docker .*\\b(stop|kill|rm|restart|down)\\b", "reason": "other GPU services are not the agent's to stop"},
-      {"pattern": "^python[0-9.]* .*model_gate.*\\b(stop|use)\\b", "reason": "the model gate is not the agent's to change"}
+      {
+        "pattern": "^esptool",
+        "reason": "every write to the robot goes through stackchan-flash and the user"
+      },
+      {
+        "pattern": "^python[0-9.]* .*\\besptool\\b",
+        "reason": "every write to the robot goes through stackchan-flash and the user"
+      },
+      {
+        "pattern": "^idf\\.py .*\\b(flash|erase[-_]flash|encrypted-flash)\\b",
+        "reason": "every write to the robot goes through stackchan-flash and the user"
+      },
+      {
+        "pattern": "^(python[0-9.]*|bash|sh) .*stackchan[-_]flash",
+        "reason": "stackchan-flash runs only with the user's confirmation"
+      },
+      {
+        "pattern": "^docker .*\\b(stop|kill|rm|restart|down)\\b",
+        "reason": "other GPU services are not the agent's to stop"
+      },
+      {
+        "pattern": "^python[0-9.]* .*model_gate.*\\b(stop|use)\\b",
+        "reason": "the model gate is not the agent's to change"
+      }
     ],
     "blocked_code": [
-      {"pattern": "\\besptool\\b", "reason": "every write to the robot goes through stackchan-flash and the user"},
-      {"pattern": "\\bidf\\.py\\b.*\\b(flash|erase[-_]flash)\\b", "reason": "every write to the robot goes through stackchan-flash and the user"}
+      {
+        "pattern": "\\besptool\\b",
+        "reason": "every write to the robot goes through stackchan-flash and the user"
+      },
+      {
+        "pattern": "\\bidf\\.py\\b.*\\b(flash|erase[-_]flash)\\b",
+        "reason": "every write to the robot goes through stackchan-flash and the user"
+      }
     ],
     "secret_paths": [
       "(^|[\\s/'\"=])(\\.env|minimax\\.env|firmware\\.local\\.env|auth\\.json|\\.config\\.yaml)(?![\\w.-])"
