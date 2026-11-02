@@ -22,6 +22,9 @@ DIST = ROOT / "dist" / "firmware"
 ENV_FILE = ROOT / "config" / "firmware.local.env"
 BOARD = "elena-stackchan"
 VARIANT = "elena-stackchan"
+SCREEN_STREAM_OPTION = "CONFIG_ELENA_SCREEN_STREAM"
+AVATAR_ELENA_OPTION = "CONFIG_ELENA_AVATAR_ELENA"
+AVATAR_EMOJI_OPTION = "CONFIG_ELENA_AVATAR_EMOJI"
 
 
 def slugify(text: str) -> str:
@@ -118,6 +121,36 @@ def source_fingerprint(directory: Path) -> str:
     return digest.hexdigest()
 
 
+def enable_kconfig(sdkconfig: Path, option: str) -> None:
+    """Turn on a bool option that the build left unset."""
+    text = sdkconfig.read_text(encoding="utf-8")
+    unset = f"# {option} is not set"
+    if unset not in text.splitlines():
+        raise SystemExit(f"{option} is not available in this build.")
+    sdkconfig.write_text(text.replace(unset, f"{option}=y"), encoding="utf-8")
+
+
+def select_avatar(sdkconfig: Path, avatar: str) -> None:
+    """Choose the avatar in a built configuration. Elena is the default."""
+    if avatar == "elena":
+        return
+    text = sdkconfig.read_text(encoding="utf-8")
+    default_on = f"{AVATAR_ELENA_OPTION}=y"
+    chosen_off = f"# {AVATAR_EMOJI_OPTION} is not set"
+    lines = text.splitlines()
+    if default_on not in lines or chosen_off not in lines:
+        raise SystemExit("This build has no avatar choice.")
+    text = text.replace(default_on, f"# {AVATAR_ELENA_OPTION} is not set")
+    sdkconfig.write_text(text.replace(chosen_off, f"{AVATAR_EMOJI_OPTION}=y"), encoding="utf-8")
+
+
+def check_avatar_assets(assets: Path, avatar: str) -> None:
+    """Fail if the assets belong to the other avatar, as stale ones would."""
+    has_gifs = b"GIF89a" in assets.read_bytes()
+    if has_gifs != (avatar == "elena"):
+        raise SystemExit(f"{assets} does not match the {avatar} avatar.")
+
+
 def resolve_selection(board: str, variant: str) -> str:
     """Validate against the same board registry that the canonical builder uses."""
     if not re.fullmatch(r"[a-z0-9./-]+", board) or ".." in board.split("/"):
@@ -138,6 +171,10 @@ def main() -> int:
     parser.add_argument("--xiaozhi-cloud", action="store_true", help="Keep the default Xiaozhi cloud server")
     parser.add_argument("--board", default=BOARD, help="Board directory")
     parser.add_argument("--variant", default=VARIANT, help="Board variant name")
+    parser.add_argument("--screen-stream", action="store_true",
+                        help="Include the screen stream for tools/screen_viewer.py")
+    parser.add_argument("--avatar", choices=("elena", "emoji"),
+                        help="Avatar of the elena-stackchan board; the default is elena")
     args = parser.parse_args()
     try:
         board_symbol = resolve_selection(args.board, args.variant)
@@ -160,11 +197,22 @@ def main() -> int:
         raise SystemExit("The configured board does not match the requested image.")
     if url:
         set_ota_url(sdkconfig, url)
+    if args.screen_stream:
+        enable_kconfig(sdkconfig, SCREEN_STREAM_OPTION)
+    avatar = args.avatar or ("elena" if args.board == BOARD else None)
+    if avatar:
+        select_avatar(sdkconfig, avatar)
+    if avatar == "emoji":
+        # A changed list of arguments does not rebuild the assets by itself.
+        (FIRMWARE / "build" / "generated_assets.bin").unlink(missing_ok=True)
+    if url or args.screen_stream or avatar == "emoji":
         run("idf.py", "build")
     build = FIRMWARE / "build"
     if url and url.encode() not in (build / "xiaozhi.bin").read_bytes():
         raise SystemExit("The built app does not contain OTA_URL.")
     check_language(flash_app(build), args.language)
+    if avatar:
+        check_avatar_assets(build / "generated_assets.bin", avatar)
     match = re.search(r'^CONFIG_OTA_URL="(.*)"$', sdkconfig.read_text(encoding="utf-8"), re.MULTILINE)
 
     if source_fingerprint(FIRMWARE) != source_sha256:
@@ -176,6 +224,8 @@ def main() -> int:
         "created_at": created.isoformat(timespec="seconds"),
         "board": args.board,
         "variant": args.variant,
+        "screen_stream": args.screen_stream,
+        "avatar": avatar or "",
         "idf_version": os.environ.get("ESP_IDF_VERSION", ""),
         "firmware_commit": git("rev-parse", "HEAD"),
         "firmware_dirty": dirty,

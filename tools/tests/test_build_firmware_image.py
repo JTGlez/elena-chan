@@ -7,7 +7,74 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from build_firmware_image import image_name, read_ota_url, set_ota_url, slugify, store_image  # noqa: E402
+from build_firmware_image import (  # noqa: E402
+    check_avatar_assets, enable_kconfig, image_name, read_ota_url, select_avatar, set_ota_url,
+    slugify, store_image,
+)
+
+
+class KconfigTests(unittest.TestCase):
+    def write(self, directory, text):
+        path = Path(directory) / "sdkconfig"
+        path.write_text(text, encoding="utf-8")
+        return path
+
+    def test_enable_turns_on_an_unset_option(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self.write(tmp, "A=1\n# CONFIG_ELENA_SCREEN_STREAM is not set\nB=2\n")
+            enable_kconfig(path, "CONFIG_ELENA_SCREEN_STREAM")
+            self.assertEqual(path.read_text(), "A=1\nCONFIG_ELENA_SCREEN_STREAM=y\nB=2\n")
+
+    def test_enable_refuses_an_option_the_build_does_not_have(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self.write(tmp, "A=1\n")
+            with self.assertRaises(SystemExit):
+                enable_kconfig(path, "CONFIG_ELENA_SCREEN_STREAM")
+
+
+class AvatarTests(unittest.TestCase):
+    CONFIG = "A=1\nCONFIG_ELENA_AVATAR_ELENA=y\n# CONFIG_ELENA_AVATAR_EMOJI is not set\n"
+
+    def test_selecting_emoji_flips_both_choice_lines(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "sdkconfig"
+            path.write_text(self.CONFIG, encoding="utf-8")
+            select_avatar(path, "emoji")
+            self.assertEqual(
+                path.read_text(),
+                "A=1\n# CONFIG_ELENA_AVATAR_ELENA is not set\nCONFIG_ELENA_AVATAR_EMOJI=y\n",
+            )
+
+    def test_selecting_elena_changes_nothing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "sdkconfig"
+            path.write_text(self.CONFIG, encoding="utf-8")
+            select_avatar(path, "elena")
+            self.assertEqual(path.read_text(), self.CONFIG)
+
+    def test_selecting_refuses_a_build_without_the_choice(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "sdkconfig"
+            path.write_text("A=1\n", encoding="utf-8")
+            with self.assertRaises(SystemExit):
+                select_avatar(path, "emoji")
+
+    def write_assets(self, directory, data):
+        path = Path(directory) / "generated_assets.bin"
+        path.write_bytes(data)
+        return path
+
+    def test_elena_assets_must_contain_her_gifs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            check_avatar_assets(self.write_assets(tmp, b"xxGIF89axx"), "elena")
+            with self.assertRaises(SystemExit):
+                check_avatar_assets(self.write_assets(tmp, b"xxPNGxx"), "elena")
+
+    def test_emoji_assets_must_not_contain_stale_gifs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            check_avatar_assets(self.write_assets(tmp, b"xxPNGxx"), "emoji")
+            with self.assertRaises(SystemExit):
+                check_avatar_assets(self.write_assets(tmp, b"xxGIF89axx"), "emoji")
 
 
 class NamingTests(unittest.TestCase):
@@ -122,6 +189,7 @@ class SelectionTests(unittest.TestCase):
                 calls.append(args)
                 (firmware/'sdkconfig').write_text(f'{symbol}=y\nCONFIG_OTA_URL="https://test.invalid/ota/"\n')
                 (build/'app.bin').write_bytes(app_bytes)
+                (build/'generated_assets.bin').write_bytes(b'GIF89a')
                 (build/'flasher_args.json').write_text(json.dumps({'flash_files': {'0x20000':'app.bin'}}))
             with mock.patch.object(image, 'FIRMWARE', firmware), mock.patch.object(image, 'ROOT', root), \
                  mock.patch.object(image, 'DIST', root/'dist'), mock.patch.object(image, 'git', return_value='abc1234'), \
