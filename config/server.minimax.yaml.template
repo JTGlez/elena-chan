@@ -49,4 +49,6 @@ TTS:
     host: api.minimax.io
     model: speech-2.8-turbo
     voice_id: Spanish_Kind-heartedGirl
+    # The server's base prompt replies in this language, and defaults to Chinese.
+    language: español
     output_dir: tmp/
