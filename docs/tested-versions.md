@@ -9,6 +9,8 @@ Tested on 2026-11-02 under WSL2 with Ubuntu 26.04.
 | `xiaozhi-esp32-server` | `4745186` plus `requirements-dev.txt` and `requirements.lock`, Python 3.10 |
 | Hermes | Not integrated yet |
 
+The firmware environment for host tests and tools is `.venv-firmware`: Python 3.12 and `tools/requirements-firmware.lock`.
+
 ## Results
 
 | Check | Result |
@@ -17,6 +19,10 @@ Tested on 2026-11-02 under WSL2 with Ubuntu 26.04.
 | `make firmware` | Builds |
 | GitHub Actions on `main` | `tools`, `server`, and `firmware` jobs pass |
 | `make server-run` with `config/server.local.yaml.template` | Starts and initializes LLM, VAD, and STT providers |
+
+## Built and host-tested, not run on the robot
+
+Branch `feature/elena-avatar-stage` of the firmware at `7ab1f70`, with the avatar stage and the boot screen. `make test`, `make check-locks` and `make firmware BOARD=m5stack/core-s3 BOARD_VARIANT=m5stack-core-s3` pass, and images build for `AVATAR=elena` and `AVATAR=emoji`. `ProbeServer` and the changes in `main/application.cc` have no host test. The checks on the robot are in Task 6 of `docs/superpowers/plans/2026-11-02-avatar-stage.md`.
 
 ## On the robot
 

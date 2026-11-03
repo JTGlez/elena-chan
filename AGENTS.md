@@ -18,7 +18,7 @@ elena-chan/
 ├── firmware/         # Submodule: JTGlez/xiaozhi-esp32, branch elena
 ├── server/           # Submodule: JTGlez/xiaozhi-esp32-server, branch elena
 ├── brain/            # Hermes profile, SOUL.md, stackchan_mcp.py; no secrets
-├── docs/             # Decisions and tested version combinations
+├── docs/             # Decisions and tested version combinations; avatars.md explains how to add an avatar
 ├── tools/            # Setup scripts and helpers; `make help` lists entry points
 ├── config/           # Templates without secrets
 ├── dist/firmware/    # Firmware images ready to flash (gitignored)
@@ -73,7 +73,7 @@ make setup          # Submodules, server and firmware environments, ESP-IDF v6.1
 make test           # All test suites
 make check-locks    # Fails if pinned versions drifted; run after a firmware build
 make firmware       # Builds for CoreS3; never writes to the robot
-make firmware-image PURPOSE="..."  # Stores an image in dist/firmware/; optional SCREEN_STREAM=1, AVATAR=emoji
+make firmware-image PURPOSE="..."  # Stores an image in dist/firmware/; optional SCREEN_STREAM=1, AVATAR=<folder>
 make screen-viewer ROBOT=<address> # Watches and records the screen of a SCREEN_STREAM=1 image
 make server-config  # Generates data/.config.yaml for local services; PROFILE=minimax uses MiniMax
 make server-run     # Starts the server

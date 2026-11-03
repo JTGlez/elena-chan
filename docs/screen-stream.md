@@ -124,6 +124,10 @@ Sequence numbers show the frames are skipped on the robot, not lost on the netwo
 
 A different cut, with no viewer connected: at 13:10 the LLM stalled for 40 s and returned garbage, the TTS failed with an empty error, and the robot stayed in `speaking` without audio. After 30 s the avatar went back to rest while the text still said it was speaking. The LLM's text also contains corrupted words in other turns. This is not related to the stream.
 
+## Avatars
+
+The stream reads pixels at the panel flush, so it needs no change per avatar. `SCREEN_STREAM=1` combines with `AVATAR=<folder>`.
+
 ## Checked so far
 
 - Host tests cover the hash, the strip pool, the screen map, the packet format and the viewer.
