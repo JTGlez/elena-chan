@@ -22,7 +22,7 @@ The firmware environment for host tests and tools is `.venv-firmware`: Python 3.
 
 ## Built and host-tested, not run on the robot
 
-Branch `feature/elena-avatar-stage` of the firmware at `7ab1f70`, with the avatar stage and the boot screen. `make test`, `make check-locks` and `make firmware BOARD=m5stack/core-s3 BOARD_VARIANT=m5stack-core-s3` pass, and images build for `AVATAR=elena` and `AVATAR=emoji`. `ProbeServer` and the changes in `main/application.cc` have no host test. The checks on the robot are in Task 6 of `docs/superpowers/plans/2026-11-02-avatar-stage.md`.
+Branch `feature/elena-avatar-stage` of the firmware at `7eb965c`, with the avatar stage and the boot screen. `make test`, `make check-locks` and `make firmware BOARD=m5stack/core-s3 BOARD_VARIANT=m5stack-core-s3` pass, and images build for `AVATAR=elena` and `AVATAR=emoji`. `ProbeServer` and the changes in `main/application.cc` have no host test. The checks on the robot are in Task 6 of `docs/superpowers/plans/2026-11-02-avatar-stage.md`.
 
 ## On the robot
 

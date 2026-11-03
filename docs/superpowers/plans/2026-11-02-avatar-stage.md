@@ -575,7 +575,9 @@ Each write needs the user's confirmation, through the `stackchan-flash` skill.
 - [ ] **Step 4: Stop the server and reset.** Expected: the failure screen in red, a countdown, no avatar.
 - [ ] **Step 5: Touch the screen during the failure, and say the wake word.** Expected: it stays on the failure screen, with no crash. The log may say `Protocol not initialized`.
 - [ ] **Step 6: Start the server.** Expected: it finishes without a reset, the sound plays, the avatar appears at full brightness.
+  After the touch and wake word of Step 5, also check two things that have no host test: the status bubble appears right after boot, and the wake word answers. With the server's time set by this retry, the clock also appears.
 - [ ] **Step 7: On battery, leave the failure screen for over 5 minutes.** Expected: it dims after about 1 minute, and powers off after about 5. Starting the server before that restores full brightness.
+- [ ] **Step 7b: With no stored server settings, if practical:** the failure screen shows with its countdown and no alert sound, and starting the server finishes the boot without a reset. It needs an erased `websocket` namespace, so skip it if that would need a write the operator did not plan, and record it as not tested.
 - [ ] **Step 8: Wi-Fi setup path, if practical:** with no saved network, the hint is readable on the boot screen. Record it as not tested if you skip it.
 - [ ] **Step 9: Measure voice:** a 5-minute story with a viewer. Expected: under 0.1% `audio_dropped` with a warm cache, 0 `mic_frames_dropped`, and `hook_us_per_frame` near 2.5 ms. A worse figure stops the work for a decision.
 - [ ] **Step 10: Compare the UI:** capture `latest.png` in each state on Elena, flash the emoji, and repeat Steps 3, 4, 6 and 9. The bar, bubble and tail match in position. Check that the tail and bubble do not hide the figure on any GIF.
